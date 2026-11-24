@@ -240,6 +240,7 @@ interface LiveB1ContextData {
 let cachedB1Data: LiveB1ContextData | null = null;
 let inFlightB1ContextPromise: Promise<LiveB1ContextData> | null = null;
 let cachedSeriesNameByCode: Map<number, string> | null = null;
+const cachedBpByCode = new Map<string, { cardName: string; nif?: string }>();
 
 async function loadSeriesMapOnce(): Promise<Map<number, string>> {
   if (cachedSeriesNameByCode) return cachedSeriesNameByCode;
@@ -362,7 +363,14 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
           if (openAbs <= 0.009) continue;
 
           const cardCode = String(r.CardCode ?? '');
+          const cardName = String(r.CardName ?? cardCode);
           const docNif = String(r.FederalTaxID ?? '').replace(/^PT/i, '').trim();
+          if (cardCode && cardName) {
+            cachedBpByCode.set(cardCode, {
+              cardName,
+              nif: docNif || cachedBpByCode.get(cardCode)?.nif,
+            });
+          }
           const seriesCode = r.Series != null ? Number(r.Series) : undefined;
           const seriesName =
             (seriesCode != null ? seriesNameByCode.get(seriesCode) : undefined) ||
@@ -384,7 +392,7 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
             seriesName,
             atDocNumber: numAtCard || formattedDocLabel,
             cardCode,
-            cardName: String(r.CardName ?? cardCode),
+            cardName,
             nif: docNif || undefined,
             bpIbans: [],
             docDate: String(r.DocDate ?? '').slice(0, 10),
@@ -408,6 +416,69 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
         ...mapServiceLayerDocs(apCms, 'AP_CREDIT_MEMO', -1),
       ];
 
+      const resolveJeCardCode = (
+        je: {
+          Memo?: string;
+          JournalEntryLines?: Array<{
+            AccountCode: string;
+            ShortName?: string;
+            ContraAccount?: string;
+            LineMemo?: string;
+          }>;
+        },
+        line: {
+          AccountCode: string;
+          ShortName?: string;
+          ContraAccount?: string;
+          LineMemo?: string;
+        }
+      ): string | undefined => {
+        if (line.ShortName && line.ShortName !== line.AccountCode) return line.ShortName;
+        if (line.ContraAccount && line.ContraAccount !== line.AccountCode && !/^\d{5,}$/.test(line.ContraAccount)) {
+          return line.ContraAccount;
+        }
+        const siblingBp = (je.JournalEntryLines ?? []).find(
+          (s) => s.ShortName && s.ShortName !== s.AccountCode
+        );
+        if (siblingBp?.ShortName) return siblingBp.ShortName;
+        if (line.ContraAccount && line.ContraAccount !== line.AccountCode) return line.ContraAccount;
+        const memoText = line.LineMemo || je.Memo || '';
+        const memoMatch = memoText.match(/-\s*([A-Za-z0-9_-]{3,20})\s*$/);
+        return memoMatch ? memoMatch[1] : undefined;
+      };
+
+      const missingBpCodes = new Set<string>();
+      for (const je of jeRes.value ?? []) {
+        for (const line of je.JournalEntryLines ?? []) {
+          const code = resolveJeCardCode(je, line);
+          if (code && !cachedBpByCode.has(code)) {
+            missingBpCodes.add(code);
+          }
+        }
+      }
+
+      if (missingBpCodes.size > 0) {
+        const batchCodes = Array.from(missingBpCodes).slice(0, 30);
+        const filterExpr = batchCodes
+          .map((c) => `CardCode eq '${c.replace(/'/g, "''")}'`)
+          .join(' or ');
+        try {
+          const bpRes = await b1sFetch<{
+            value?: Array<{ CardCode: string; CardName?: string; FederalTaxID?: string }>;
+          }>(`/BusinessPartners?$select=CardCode,CardName,FederalTaxID&$filter=${encodeURIComponent(filterExpr)}`);
+          for (const bp of bpRes.value ?? []) {
+            if (bp.CardCode && bp.CardName) {
+              cachedBpByCode.set(bp.CardCode, {
+                cardName: String(bp.CardName).trim(),
+                nif: String(bp.FederalTaxID ?? '').replace(/^PT/i, '').trim() || undefined,
+              });
+            }
+          }
+        } catch {
+          // Ignore if BusinessPartners endpoint is restricted
+        }
+      }
+
       const journalByGl = new Map<string, B1UnreconciledJournalLine[]>();
       for (const je of jeRes.value ?? []) {
         for (const line of je.JournalEntryLines ?? []) {
@@ -415,6 +486,9 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
           const credit = Number(line.Credit ?? 0);
           const signedAmount = Math.round((debit - credit) * 100) / 100;
           if (Math.abs(signedAmount) < 0.009) continue;
+
+          const cardCode = resolveJeCardCode(je, line);
+          const bpInfo = cardCode ? cachedBpByCode.get(cardCode) : undefined;
 
           const list = journalByGl.get(line.AccountCode) ?? [];
           list.push({
@@ -430,7 +504,9 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
             ref2: line.Reference2 || je.Reference2,
             memo: line.LineMemo || je.Memo,
             contraAct: line.ContraAccount || line.ShortName,
-            cardCode: line.ShortName !== line.AccountCode ? line.ShortName : line.ContraAccount,
+            cardCode,
+            cardName: bpInfo?.cardName,
+            nif: bpInfo?.nif,
             sourceDocNum: je.BaseReference ? Number(je.BaseReference) : undefined,
           });
           journalByGl.set(line.AccountCode, list);

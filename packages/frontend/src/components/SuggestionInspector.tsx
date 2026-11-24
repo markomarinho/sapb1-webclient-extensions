@@ -437,11 +437,13 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                     gap: '10px',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: '14px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '14px', color: '#1d2d3e' }}>
                         {sug.targetType === 'EXISTING_JOURNAL_ENTRY' &&
-                          `Reconciliar Lançamento Existente (OJDT #${sug.journalLine?.transId})`}
+                          `Reconciliar Pagamento / Lançamento Existente (Doc. Nº ${
+                            sug.journalLine?.sourceDocNum || sug.journalLine?.ref1 || sug.journalLine?.transId
+                          })`}
                         {sug.targetType === 'OPEN_AR_INVOICE' && 'Criar Recebimento de Cliente + Reconciliar'}
                         {sug.targetType === 'OPEN_AP_INVOICE' && 'Criar Pagamento a Fornecedor + Reconciliar'}
                         {sug.targetType === 'MULTI_INVOICE_BUNDLE' &&
@@ -449,21 +451,35 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                         {sug.targetType === 'DIRECT_GL_ACCOUNT' &&
                           'Contabilização Direta em Conta G/L (Despesas / Juros) + Reconciliar'}
                       </div>
-                      <div style={{ fontSize: '13px', color: '#556b82' }}>
-                        {sug.cardCode ? `${sug.cardCode} — ` : ''}
-                        <strong>{sug.cardName}</strong>
+                      <div style={{ fontSize: '13px', color: '#556b82', marginTop: '2px' }}>
+                        {sug.cardCode ? (
+                          <>
+                            <strong style={{ color: '#1d2d3e' }}>{sug.cardCode}</strong>
+                            {' — '}
+                            <strong style={{ color: '#1d2d3e' }}>
+                              {sug.journalLine?.cardName || sug.cardName || 'Parceiro de Negócios'}
+                            </strong>
+                          </>
+                        ) : (
+                          <strong style={{ color: '#1d2d3e' }}>{sug.cardName}</strong>
+                        )}
                         {sug.nif ? ` (NIF ${sug.nif})` : ''}
                       </div>
                     </div>
 
-                    <ObjectStatus
-                      state={
-                        sug.confidence >= 85 ? 'Positive' : sug.confidence >= 70 ? 'Critical' : 'Information'
-                      }
-                      showDefaultIcon
-                    >
-                      Confiança {sug.confidence}%
-                    </ObjectStatus>
+                    <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: '15px', fontWeight: 700, color: '#1d2d3e', marginBottom: '2px' }}>
+                        Total: {formatEur(sug.matchedAmount)}
+                      </div>
+                      <ObjectStatus
+                        state={
+                          sug.confidence >= 85 ? 'Positive' : sug.confidence >= 70 ? 'Critical' : 'Information'
+                        }
+                        showDefaultIcon
+                      >
+                        Confiança {sug.confidence}%
+                      </ObjectStatus>
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -479,12 +495,40 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                       style={{
                         fontSize: '12px',
                         background: '#f5f6f7',
-                        padding: '8px 10px',
+                        padding: '10px 12px',
                         borderRadius: '6px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '12px',
                       }}
                     >
-                      TransId <strong>#{sug.journalLine.transId}</strong> • Data {sug.journalLine.refDate} • Ref:{' '}
-                      {sug.journalLine.ref2 || sug.journalLine.ref1 || '—'} • {sug.journalLine.memo}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <div>
+                          <strong>Parceiro:</strong>{' '}
+                          {sug.journalLine.cardCode ? `${sug.journalLine.cardCode} — ` : ''}
+                          <strong>{sug.journalLine.cardName || sug.cardName || '—'}</strong>
+                          {sug.journalLine.nif ? ` (NIF ${sug.journalLine.nif})` : ''}
+                        </div>
+                        <div style={{ color: '#556b82' }}>
+                          Documento Nº:{' '}
+                          <strong>
+                            {sug.journalLine.sourceDocNum ||
+                              sug.journalLine.ref1 ||
+                              sug.journalLine.ref2 ||
+                              '—'}
+                          </strong>{' '}
+                          • Lançamento (OJDT): <strong>#{sug.journalLine.transId}</strong> • Data:{' '}
+                          <strong>{sug.journalLine.refDate}</strong>
+                          {sug.journalLine.memo ? ` • Obs: ${sug.journalLine.memo}` : ''}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: '11px', color: '#556b82' }}>Valor do Lançamento</div>
+                        <strong style={{ fontSize: '14px', color: '#1d2d3e' }}>
+                          {formatEur(Math.abs(sug.journalLine.signedAmount))}
+                        </strong>
+                      </div>
                     </div>
                   )}
 
@@ -750,11 +794,19 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                             gap: '8px',
                           }}
                         >
-                          <div>
-                            <strong>TransId #{je.transId}</strong>
-                            {je.sourceDocNum ? ` (Doc #${je.sourceDocNum})` : ''} • {je.refDate} —{' '}
-                            {je.cardName || je.memo}{' '}
-                            {je.cardCode ? <span style={{ color: '#556b82' }}>({je.cardCode})</span> : null}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div>
+                              <strong>
+                                {je.cardCode ? `${je.cardCode} — ` : ''}
+                                {je.cardName || je.memo || `Lançamento #${je.transId}`}
+                              </strong>
+                              {je.nif ? <span style={{ color: '#556b82' }}> (NIF {je.nif})</span> : null}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#556b82' }}>
+                              Doc. Nº <strong>{je.sourceDocNum || je.ref1 || je.ref2 || '—'}</strong> • Lançamento
+                              TransId <strong>#{je.transId}</strong> • Data: {je.refDate}
+                              {je.memo ? ` • ${je.memo}` : ''}
+                            </div>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
                             <strong style={{ color: amountMatches ? '#188918' : '#556b82' }}>

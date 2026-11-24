@@ -408,7 +408,11 @@ export const App: React.FC = () => {
                           {l.description}
                         </div>
                         <div style={{ fontSize: '11px', color: '#556b82' }}>
-                          {topSug ? `Sugerido: ${topSug.cardName}` : `Ref: ${l.bankReference || '—'}`}
+                          {topSug
+                            ? `Sugerido: ${topSug.cardCode ? `${topSug.cardCode} — ` : ''}${
+                                topSug.journalLine?.cardName || topSug.cardName || ''
+                              }`
+                            : `Ref: ${l.bankReference || '—'}`}
                         </div>
                       </td>
                       <td
