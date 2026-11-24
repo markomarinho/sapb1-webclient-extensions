@@ -37,10 +37,10 @@ if (fs.existsSync(cachedMbtBin)) {
   });
 
   const mtadYaml = `_schema-version: "3.2"
-ID: pt-company-b1-bankreconciliation
-description: SAP Business One Web Client Extension - Bank Reconciliation (SWIFT MT940 and Norma 43)
+ID: Bank-Reconciliation
+description: Bank Reconciliation (SWIFT MT940 & Norma 43)
 version: 1.0.1
-provider: SAP
+provider: MARKO
 modules:
 - name: webclient
   type: single-page-app
