@@ -891,10 +891,10 @@ export function scoreSingleBankLine(
     if (dayDiff > 20) continue;
 
     let score = 76;
-    const reasons: string[] = ['Exact Bank G/L Amount'];
+    const reasons: string[] = ['Montante Exato no Razão (G/L)'];
     if (dayDiff <= 3) {
       score += 10;
-      reasons.push(`Date ±${dayDiff}d`);
+      reasons.push(`Data ±${dayDiff}d`);
     } else if (dayDiff <= 10) {
       score += 5;
     }
@@ -908,11 +908,11 @@ export function scoreSingleBankLine(
       (je.ref1 && je.ref1.length >= 4 && upperDesc.includes(je.ref1.toUpperCase()))
     ) {
       score += 10;
-      reasons.push(`Payment Ref #${je.ref2 || je.sourceDocNum || je.ref1}`);
+      reasons.push(`Ref. Pagamento #${je.ref2 || je.sourceDocNum || je.ref1}`);
     }
     if (nameTokenOverlap(line.description, je.cardName)) {
       score += 6;
-      reasons.push('BP Name Match');
+      reasons.push('Nome do Parceiro Coincidente');
     }
 
     const capped = Math.min(98, score);
@@ -962,10 +962,10 @@ export function scoreSingleBankLine(
 
     if (mbExact && exactAmount) {
       score = 98;
-      reasons.push(`Multibanco ${doc.multibancoEntity ?? ''}/${doc.multibancoRef}`, 'Exact Amount');
+      reasons.push(`Multibanco ${doc.multibancoEntity ?? ''}/${doc.multibancoRef}`, 'Montante Exato');
     } else if (exactAmount) {
       score = 52;
-      reasons.push('Exact Open Amount');
+      reasons.push('Montante em Aberto Exato');
       if (ibanMatch) {
         score += 26;
         reasons.push(`IBAN ${meta.counterpartyIban?.slice(0, 8)}...`);
@@ -980,18 +980,18 @@ export function scoreSingleBankLine(
       }
       if (bpNameMatched) {
         score += 10;
-        reasons.push('BP Name Match');
+        reasons.push('Nome do Parceiro Coincidente');
       }
       const dueDiff = daysBetween(line.bookingDate, doc.dueDate);
       if (dueDiff <= 7) {
         score += 6;
-        reasons.push(`Due ±${dueDiff}d`);
+        reasons.push(`Vencimento ±${dueDiff}d`);
       } else if (dueDiff <= 20) {
         score += 3;
       }
     } else if (docOpenCents > lineCents && (mbExact || (docNumMatched && (ibanMatch || nifMatch)))) {
       score = 78;
-      reasons.push('Partial Payment on Identified Invoice');
+      reasons.push('Pagamento Parcial de Fatura Identificada');
       if (docNumMatched) reasons.push(`Doc ${doc.atDocNumber || doc.docNum}`);
       if (nifMatch) reasons.push(`NIF ${doc.nif}`);
     }
@@ -1053,8 +1053,8 @@ export function scoreSingleBankLine(
     let score = 62;
     const reasons: string[] = [
       hasCreditMemo
-        ? `Exact Net Sum (${bundle.length} Docs incl. Credit Memo)`
-        : `Exact Sum of ${bundle.length} Open Invoices`,
+        ? `Soma Líquida Exata (${bundle.length} Docs incl. Credit Memo)`
+        : `Soma Exata de ${bundle.length} Faturas em Aberto`,
     ];
     if (ibanMatch) {
       score += 18;
@@ -1066,7 +1066,7 @@ export function scoreSingleBankLine(
     }
     if (bpNameMatched) {
       score += 6;
-      reasons.push('BP Name Match');
+      reasons.push('Nome do Parceiro Coincidente');
     }
 
     const capped = Math.min(95, score);

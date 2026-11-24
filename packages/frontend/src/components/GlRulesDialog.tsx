@@ -199,7 +199,7 @@ export const GlRulesDialog: React.FC<Props> = ({ open, onClose, onUpdated }) => 
                 <tr key={r.id} style={{ borderBottom: '1px solid #efefef' }}>
                   <td style={{ padding: '8px', fontWeight: 600 }}>{r.name}</td>
                   <td style={{ padding: '8px' }}>
-                    <Tag colorScheme={r.direction === 'DEBIT' ? '1' : '8'}>
+                    <Tag design={r.direction === 'DEBIT' ? 'Negative' : 'Positive'} hideStateIcon>
                       {r.direction === 'DEBIT' ? 'Débito (-)' : 'Crédito (+)'}
                     </Tag>
                   </td>

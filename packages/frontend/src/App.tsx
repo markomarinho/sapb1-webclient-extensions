@@ -173,7 +173,11 @@ export const App: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Title level="H4">Tesouraria &amp; Reconciliação Externa</Title>
             {summary && (
-              <Tag colorScheme={summary.mode === 'live' ? '8' : '6'}>
+              <Tag
+                design={summary.mode === 'live' ? 'Positive' : 'Set2'}
+                colorScheme={summary.mode === 'live' ? '8' : '6'}
+                hideStateIcon
+              >
                 {isUsingNativeWebClientB1s()
                   ? 'Sessão SAP B1 Web Client Ativa'
                   : summary.mode === 'live'

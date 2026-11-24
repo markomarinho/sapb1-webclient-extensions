@@ -310,7 +310,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <Tag colorScheme="6">
+            <Tag design="Set2" colorScheme="6" hideStateIcon>
               Banco {line.bankCode} • {line.transactionCode}
             </Tag>
             <span style={{ fontSize: '12px', color: '#556b82' }}>
@@ -349,14 +349,22 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
         }}
       >
         {line.extracted.multibancoRef && (
-          <Tag colorScheme="8">
+          <Tag design="Set2" colorScheme="8" hideStateIcon>
             MB Ent: {line.extracted.multibancoEntity ?? '—'} / Ref: {line.extracted.multibancoRef}
           </Tag>
         )}
-        {line.extracted.counterpartyNif && <Tag colorScheme="5">NIF: {line.extracted.counterpartyNif}</Tag>}
-        {line.extracted.counterpartyIban && <Tag colorScheme="7">IBAN: {line.extracted.counterpartyIban}</Tag>}
+        {line.extracted.counterpartyNif && (
+          <Tag design="Set2" colorScheme="5" hideStateIcon>
+            NIF: {line.extracted.counterpartyNif}
+          </Tag>
+        )}
+        {line.extracted.counterpartyIban && (
+          <Tag design="Set2" colorScheme="7" hideStateIcon>
+            IBAN: {line.extracted.counterpartyIban}
+          </Tag>
+        )}
         {line.extracted.invoiceCandidates.map((inv) => (
-          <Tag key={inv} colorScheme="3">
+          <Tag key={inv} design="Set2" colorScheme="3" hideStateIcon>
             Doc Detetado: {inv}
           </Tag>
         ))}
@@ -484,7 +492,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
 
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                     {sug.reasons.map((r) => (
-                      <Tag key={r} colorScheme="8">
+                      <Tag key={r} design="Positive">
                         {r}
                       </Tag>
                     ))}
@@ -679,7 +687,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                               />
                               <div>
                                 {d.seriesName && (
-                                  <Tag colorScheme="7" style={{ marginRight: '6px' }}>
+                                  <Tag design="Set2" colorScheme="7" hideStateIcon style={{ marginRight: '6px' }}>
                                     {d.seriesName}
                                   </Tag>
                                 )}
@@ -729,7 +737,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                   {selectedDocs.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
                       {selectedDocs.map((sd) => (
-                        <Tag key={sd.docEntry} colorScheme="6">
+                        <Tag key={sd.docEntry} design="Set2" colorScheme="6" hideStateIcon>
                           {sd.atDocNumber || `#${sd.docNum}`} • {sd.cardCode} (
                           {formatEur(allocatedByDocEntry[sd.docEntry] ?? sd.openAmount)})
                         </Tag>
