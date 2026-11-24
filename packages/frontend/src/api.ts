@@ -10,8 +10,21 @@ import type {
   StatementImportResponse,
   StatementPreviewResponse,
 } from '@b1-recon/shared';
+import { webClientB1sAdapter } from './webClientB1sAdapter';
 
 const STORAGE_KEY_API_BASE = 'B1_RECON_API_BASE_URL';
+
+/**
+ * Detects whether the React SPA is running directly inside the SAP Business One Web Client
+ * (/extn/ui-static/...) without an external backend URL override.
+ * When true, all operations run natively in-browser against same-origin `/b1s/v1/...`,
+ * avoiding any Content-Security-Policy (connect-src 'self') violations.
+ */
+export function isUsingNativeWebClientB1s(): boolean {
+  const customBase = getApiBaseUrl();
+  if (customBase) return false;
+  return typeof window !== 'undefined' && window.location.pathname.includes('/extn/ui-static/');
+}
 
 export function getApiBaseUrl(): string {
   const urlParam = new URLSearchParams(window.location.search).get('apiUrl');
@@ -21,17 +34,21 @@ export function getApiBaseUrl(): string {
     return clean;
   }
   const saved = localStorage.getItem(STORAGE_KEY_API_BASE);
-  if (saved) return saved.replace(/\/+$/, '');
+  if (saved) {
+    // Clear any stale non-HTTPS / bare-host URL that would violate SAP B1 Web Client CSP
+    if (
+      typeof window !== 'undefined' &&
+      window.location.pathname.includes('/extn/ui-static/') &&
+      saved.startsWith('http://')
+    ) {
+      localStorage.removeItem(STORAGE_KEY_API_BASE);
+      return '';
+    }
+    return saved.replace(/\/+$/, '');
+  }
 
   const envUrl = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL;
-  if (envUrl) return envUrl.replace(/\/+$/, '');
-
-  // When running as a static single-page-app inside SAP B1 Web Client (/extn/ui-static/...),
-  // default to the local/same-host backend on port 4010 until configured in Connection Settings.
-  if (typeof window !== 'undefined' && window.location.pathname.includes('/extn/ui-static/')) {
-    return `${window.location.protocol === 'https:' ? 'http:' : window.location.protocol}//${window.location.hostname}:4010`;
-  }
-  return '';
+  return envUrl ? envUrl.replace(/\/+$/, '') : '';
 }
 
 export function setApiBaseUrl(baseUrl: string): void {
@@ -101,10 +118,12 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   getConnectionSettings(): Promise<ConnectionSettingsDto> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.getConnectionSettings();
     return requestJson('/api/settings/connection');
   },
 
   saveConnectionSettings(settings: ConnectionSettingsDto): Promise<{ ok: boolean; mode: 'mock' | 'live' }> {
+    if (isUsingNativeWebClientB1s()) return Promise.resolve({ ok: true, mode: 'live' });
     return requestJson('/api/settings/connection', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -113,6 +132,7 @@ export const api = {
   },
 
   testConnection(): Promise<ConnectionTestResultDto> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.testConnection();
     return requestJson('/api/settings/test-connection', {
       method: 'POST',
     });
@@ -122,6 +142,7 @@ export const api = {
     houseBanks: HouseBankAccount[];
     summary: DashboardSummary;
   }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.getDashboard(houseBankId);
     const qs = houseBankId && houseBankId !== 'ALL' ? `?houseBankId=${encodeURIComponent(houseBankId)}` : '';
     return requestJson(`/api/dashboard${qs}`);
   },
@@ -131,6 +152,7 @@ export const api = {
     statusGroup?: 'PENDING' | 'RECONCILED' | 'IGNORED' | 'ALL';
     search?: string;
   }): Promise<{ lines: StagedBankLine[] }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.getLines(params);
     const sp = new URLSearchParams();
     if (params.houseBankId && params.houseBankId !== 'ALL') sp.set('houseBankId', params.houseBankId);
     if (params.statusGroup) sp.set('statusGroup', params.statusGroup);
@@ -142,15 +164,18 @@ export const api = {
     direction: 'CREDIT' | 'DEBIT',
     glAccountCode: string
   ): Promise<{ openDocuments: B1OpenDocument[]; journalLines: B1UnreconciledJournalLine[] }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.getManualCandidates(direction, glAccountCode);
     const sp = new URLSearchParams({ direction, glAccountCode });
     return requestJson(`/api/b1/candidates?${sp.toString()}`);
   },
 
   getGlRules(): Promise<{ rules: GlMatchingRule[] }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.getGlRules();
     return requestJson('/api/gl-rules');
   },
 
   saveGlRule(rule: Omit<GlMatchingRule, 'id'> & { id?: string }): Promise<{ rule: GlMatchingRule }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.saveGlRule(rule);
     return requestJson('/api/gl-rules', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -159,18 +184,21 @@ export const api = {
   },
 
   deleteGlRule(id: string): Promise<{ ok: boolean }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.deleteGlRule(id);
     return requestJson(`/api/gl-rules/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
   },
 
   previewStatement(file: File): Promise<StatementPreviewResponse> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.previewStatement(file);
     const form = new FormData();
     form.append('file', file);
     return requestJson('/api/statements/preview', { method: 'POST', body: form });
   },
 
   importStatement(file: File, houseBankId?: string): Promise<StatementImportResponse> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.importStatement(file, houseBankId);
     const form = new FormData();
     if (houseBankId) form.append('houseBankId', houseBankId);
     form.append('file', file);
@@ -178,10 +206,12 @@ export const api = {
   },
 
   importSampleStatements(): Promise<{ importedLinesCount: number; skippedDuplicateCount: number }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.importSampleStatements();
     return requestJson('/api/statements/import-samples', { method: 'POST' });
   },
 
   approveReconciliation(payload: ApproveReconciliationRequest): Promise<{ line: StagedBankLine }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.approveReconciliation(payload);
     return requestJson('/api/reconciliations/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -193,6 +223,7 @@ export const api = {
     minConfidence = 90,
     houseBankId?: string
   ): Promise<{ reconciledCount: number; errors: Array<{ bankLineId: string; error: string }> }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.batchApprove(minConfidence, houseBankId);
     return requestJson('/api/reconciliations/batch-approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -204,6 +235,7 @@ export const api = {
   },
 
   ignoreLine(bankLineId: string, reason?: string): Promise<{ line: StagedBankLine }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.ignoreLine(bankLineId, reason);
     return requestJson(`/api/reconciliations/${encodeURIComponent(bankLineId)}/ignore`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -212,12 +244,14 @@ export const api = {
   },
 
   reopenLine(bankLineId: string): Promise<{ line: StagedBankLine }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.reopenLine(bankLineId);
     return requestJson(`/api/reconciliations/${encodeURIComponent(bankLineId)}/reopen`, {
       method: 'POST',
     });
   },
 
   getAuditLogs(): Promise<{ logs: AuditLogRecord[] }> {
+    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.getAuditLogs();
     return requestJson('/api/audit-logs');
   },
 };
