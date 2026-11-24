@@ -139,7 +139,9 @@ export interface B1OpenDocument {
   docType: B1DocumentType;
   docEntry: number;
   docNum: number;
-  atDocNumber?: string; // e.g. FT 2026/1042 or NC 2026/15
+  seriesCode?: number;
+  seriesName?: string;
+  atDocNumber?: string; // e.g. FT 2026/1042 or NumAtCard / Vendor Ref
   cardCode: string;
   cardName: string;
   nif?: string;
@@ -180,6 +182,8 @@ export interface MatchDocumentAllocation {
   docType: B1DocumentType;
   docEntry: number;
   docNum: number;
+  seriesCode?: number;
+  seriesName?: string;
   atDocNumber?: string;
   cardCode: string;
   cardName: string;
@@ -282,3 +286,16 @@ export {
   normalizeSearchString,
   parseSearchAmount,
 } from './manualSearch.js';
+
+export {
+  buildLineFingerprint,
+  decodeStatementBytes,
+  detectStatementFormat,
+  extractPortugueseMetadata,
+  isValidIban,
+  isValidPortugueseNif,
+  parseMt940,
+  parseNorma43,
+  scoreSingleBankLine,
+  sha256Hex,
+} from './parsersAndEngine.js';

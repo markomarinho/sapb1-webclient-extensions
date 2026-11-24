@@ -73,23 +73,39 @@ export function matchesAmountValue(targetAmount: number, rawQuery: string): bool
 }
 
 /**
- * Filters open SAP B1 AR/AP Invoices by Document Number (DocNum / AT Number / DocEntry),
- * CardCode, CardName, or Value (OpenAmount / DocTotal).
+ * Filters open SAP B1 AR/AP Invoices across all Document Numbering Series by
+ * Document Number (DocNum / SeriesName+DocNum / AT Number / NumAtCard / DocEntry),
+ * Series Name, CardCode, CardName, or Value (OpenAmount / DocTotal).
  */
 export function filterManualOpenDocuments(
   docs: B1OpenDocument[],
-  query: string
+  query: string,
+  seriesFilter?: string
 ): B1OpenDocument[] {
+  const seriesFiltered =
+    seriesFilter && seriesFilter !== 'ALL'
+      ? docs.filter(
+          (d) =>
+            (d.seriesName && d.seriesName === seriesFilter) ||
+            (d.seriesCode != null && String(d.seriesCode) === seriesFilter)
+        )
+      : docs;
+
   const qNorm = normalizeSearchString(query);
-  if (!qNorm) return docs;
+  if (!qNorm) return seriesFiltered;
 
   const qStripHash = qNorm.replace(/^#/, '');
 
-  return docs.filter((doc) => {
+  return seriesFiltered.filter((doc) => {
+    const seriesLabel = doc.seriesName ?? (doc.seriesCode != null ? String(doc.seriesCode) : '');
     const numberFields = [
       String(doc.docNum),
       String(doc.docEntry),
       doc.atDocNumber ?? '',
+      seriesLabel,
+      seriesLabel ? `${seriesLabel}/${doc.docNum}` : '',
+      seriesLabel ? `${seriesLabel} ${doc.docNum}` : '',
+      seriesLabel ? `${seriesLabel}-${doc.docNum}` : '',
     ]
       .map(normalizeSearchString)
       .join(' ');

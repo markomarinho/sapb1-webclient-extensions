@@ -164,6 +164,8 @@ export class LiveHanaReadRepository implements IB1ReadRepository {
         '${invType}' AS "DocType",
         T0."DocEntry",
         T0."DocNum",
+        T0."Series" AS "SeriesCode",
+        COALESCE(SR."SeriesName", CAST(T0."Series" AS NVARCHAR(30)), '') AS "SeriesName",
         COALESCE(T0."NumAtCard", '') AS "AtDocNumber",
         T0."CardCode",
         T0."CardName",
@@ -178,6 +180,7 @@ export class LiveHanaReadRepository implements IB1ReadRepository {
         COALESCE( CAST(${mbRefCol} AS NVARCHAR(50)), '' ) AS "MbRef",
         COALESCE(T0."Comments", '') AS "Comments"
       FROM "${this.schema}"."${invTable}" T0
+      LEFT JOIN "${this.schema}"."NNM1" SR ON T0."Series" = SR."Series"
       LEFT JOIN "${this.schema}"."OCRD" BP ON T0."CardCode" = BP."CardCode"
       LEFT JOIN bp_ibans IB ON T0."CardCode" = IB."CardCode"
       WHERE T0."DocStatus" = 'O'
@@ -190,6 +193,8 @@ export class LiveHanaReadRepository implements IB1ReadRepository {
         '${cmType}' AS "DocType",
         T0."DocEntry",
         T0."DocNum",
+        T0."Series" AS "SeriesCode",
+        COALESCE(SR."SeriesName", CAST(T0."Series" AS NVARCHAR(30)), '') AS "SeriesName",
         COALESCE(T0."NumAtCard", '') AS "AtDocNumber",
         T0."CardCode",
         T0."CardName",
@@ -204,6 +209,7 @@ export class LiveHanaReadRepository implements IB1ReadRepository {
         '' AS "MbRef",
         COALESCE(T0."Comments", '') AS "Comments"
       FROM "${this.schema}"."${cmTable}" T0
+      LEFT JOIN "${this.schema}"."NNM1" SR ON T0."Series" = SR."Series"
       LEFT JOIN "${this.schema}"."OCRD" BP ON T0."CardCode" = BP."CardCode"
       LEFT JOIN bp_ibans IB ON T0."CardCode" = IB."CardCode"
       WHERE T0."DocStatus" = 'O'
@@ -220,11 +226,14 @@ export class LiveHanaReadRepository implements IB1ReadRepository {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
+      const seriesName = r.SeriesName ? String(r.SeriesName).trim() : undefined;
 
       return {
         docType: (r.DocType as B1DocumentType) || invType,
         docEntry: Number(r.DocEntry),
         docNum: Number(r.DocNum),
+        seriesCode: r.SeriesCode != null ? Number(r.SeriesCode) : undefined,
+        seriesName: seriesName || undefined,
         atDocNumber: r.AtDocNumber ? String(r.AtDocNumber) : undefined,
         cardCode: String(r.CardCode),
         cardName: String(r.CardName),
