@@ -4,6 +4,7 @@ import {
   Button,
   BusyIndicator,
   Dialog,
+  Label,
   MessageStrip,
   ObjectStatus,
   Option,
@@ -132,12 +133,23 @@ export const StatementUploadDialog: React.FC<Props> = ({
             style={{ display: 'none' }}
             onChange={(e) => void handleFilePicked(e.target.files?.[0])}
           />
-          <div style={{ fontWeight: 600, color: '#0070f2', marginBottom: '6px' }}>
-            {selectedFile ? selectedFile.name : 'Arraste o ficheiro aqui ou clique para selecionar'}
+          <div style={{ fontWeight: 600, color: '#0070f2', marginBottom: '8px' }}>
+            {selectedFile ? selectedFile.name : 'Arraste o ficheiro aqui ou selecione do computador'}
           </div>
-          <div style={{ fontSize: '13px', color: '#556b82' }}>
+          <div style={{ marginBottom: '8px' }}>
+            <Button
+              design="Default"
+              onClick={(e) => {
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+            >
+              Procurar Ficheiro (.mt940 / .n43)...
+            </Button>
+          </div>
+          <Label wrappingType="Normal">
             Suporta os formatos standard SWIFT MT940 (.mt940, .sta, .940) e Norma 43 / AEB Cuaderno 43 (.n43, .c43, .aeb, .txt)
-          </div>
+          </Label>
         </div>
 
         {busy && (

@@ -37,19 +37,23 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
   // Manual candidate picker state
   const [manualLoading, setManualLoading] = useState(false);
   const [manualSearch, setManualSearch] = useState<string>('');
+  const [selectedSeries, setSelectedSeries] = useState<string>('ALL');
   const [openDocs, setOpenDocs] = useState<B1OpenDocument[]>([]);
   const [journalLines, setJournalLines] = useState<B1UnreconciledJournalLine[]>([]);
   const [glRules, setGlRules] = useState<GlMatchingRule[]>([]);
 
   // Map of docEntry -> custom allocated amount (positive for invoices, negative for credit memos)
   const [allocatedByDocEntry, setAllocatedByDocEntry] = useState<Record<number, number>>({});
+  const [allocatedTextByDocEntry, setAllocatedTextByDocEntry] = useState<Record<number, string>>({});
   const [allowPaymentOnAccount, setAllowPaymentOnAccount] = useState<boolean>(false);
   const [directGlCode, setDirectGlCode] = useState<string>('622701');
 
   useEffect(() => {
     setError(null);
     setManualSearch('');
+    setSelectedSeries('ALL');
     setAllocatedByDocEntry({});
+    setAllocatedTextByDocEntry({});
     setAllowPaymentOnAccount(false);
     setShowRaw(false);
     setMode('SUGGESTIONS');
@@ -163,9 +167,20 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
     [openDocs, allocatedByDocEntry]
   );
 
+  const availableSeries = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of openDocs) {
+      const key = d.seriesName || (d.seriesCode != null ? `Série ${d.seriesCode}` : '');
+      if (key) {
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries()).map(([name, count]) => ({ name, count }));
+  }, [openDocs]);
+
   const filteredOpenDocs = useMemo(
-    () => filterManualOpenDocuments(openDocs, manualSearch),
-    [openDocs, manualSearch]
+    () => filterManualOpenDocuments(openDocs, manualSearch, selectedSeries),
+    [openDocs, manualSearch, selectedSeries]
   );
 
   const filteredJournalLines = useMemo(() => {
@@ -195,19 +210,23 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
 
   const toggleDocumentSelection = (doc: B1OpenDocument) => {
     const next = { ...allocatedByDocEntry };
+    const nextText = { ...allocatedTextByDocEntry };
     if (next[doc.docEntry] !== undefined) {
       delete next[doc.docEntry];
+      delete nextText[doc.docEntry];
     } else {
       // Smart partial payment default: if invoice is larger than remaining bank amount, prefill remaining bank amount
       const currentSum = Object.values(next).reduce((s, v) => s + v, 0);
       const remaining = Math.round((line.amount - currentSum) * 100) / 100;
-      if (doc.openAmount > 0 && remaining > 0 && doc.openAmount > remaining) {
-        next[doc.docEntry] = remaining;
-      } else {
-        next[doc.docEntry] = doc.openAmount;
-      }
+      const initialVal =
+        doc.openAmount > 0 && remaining > 0 && doc.openAmount > remaining
+          ? remaining
+          : doc.openAmount;
+      next[doc.docEntry] = initialVal;
+      nextText[doc.docEntry] = initialVal.toFixed(2);
     }
     setAllocatedByDocEntry(next);
+    setAllocatedTextByDocEntry(nextText);
   };
 
   const handleManualInvoicesApprove = async () => {
@@ -531,10 +550,25 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
           {mode === 'MANUAL' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto' }}>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <Select
+                  onChange={(e) => {
+                    const sr = e.detail.selectedOption?.getAttribute('data-series');
+                    if (sr) setSelectedSeries(sr);
+                  }}
+                >
+                  <Option data-series="ALL" selected={selectedSeries === 'ALL'}>
+                    Todas as Séries ({openDocs.length})
+                  </Option>
+                  {availableSeries.map((s) => (
+                    <Option key={s.name} data-series={s.name} selected={selectedSeries === s.name}>
+                      {s.name} ({s.count})
+                    </Option>
+                  ))}
+                </Select>
                 <Input
-                  placeholder="Pesquisar Nº Doc, CardCode, CardName ou Valor (ex: 1042, C10010, Delta, 1845,00)..."
+                  placeholder="Pesquisar Série, Nº Doc, CardCode, CardName ou Valor (ex: 1042, C10010, 1845,00)..."
                   value={manualSearch}
-                  style={{ flex: 1, minWidth: '240px' }}
+                  style={{ flex: 1, minWidth: '220px' }}
                   onInput={(e) => setManualSearch((e.target as unknown as { value: string }).value)}
                 />
                 <Button
@@ -543,8 +577,14 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                 >
                   Valor Exato ({formatEur(line.amount)})
                 </Button>
-                {manualSearch && (
-                  <Button design="Transparent" onClick={() => setManualSearch('')}>
+                {(manualSearch || selectedSeries !== 'ALL') && (
+                  <Button
+                    design="Transparent"
+                    onClick={() => {
+                      setManualSearch('');
+                      setSelectedSeries('ALL');
+                    }}
+                  >
                     Limpar
                   </Button>
                 )}
@@ -594,8 +634,15 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                                 onChange={() => toggleDocumentSelection(d)}
                               />
                               <div>
-                                <strong>{d.atDocNumber || `#${d.docNum}`}</strong>
-                                {d.atDocNumber ? ` (#${d.docNum})` : ''}
+                                {d.seriesName && (
+                                  <Tag colorScheme="7" style={{ marginRight: '6px' }}>
+                                    {d.seriesName}
+                                  </Tag>
+                                )}
+                                <strong>#{d.docNum}</strong>
+                                {d.atDocNumber && d.atDocNumber !== `${d.seriesName}/${d.docNum}`
+                                  ? ` (${d.atDocNumber})`
+                                  : ''}
                                 {isCreditMemo ? ' [Nota de Crédito]' : ''} — {d.cardName}{' '}
                                 <span style={{ color: '#556b82' }}>({d.cardCode})</span>
                               </div>
@@ -606,26 +653,25 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                                 Saldo: {formatEur(d.openAmount)}
                               </span>
                               {checked && (
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  aria-label={`Valor a liquidar no documento ${d.docNum}`}
-                                  value={allocatedByDocEntry[d.docEntry]}
-                                  onChange={(e) => {
-                                    const num = parseFloat(e.target.value);
+                                <Input
+                                  accessibleName={`Valor a liquidar no documento ${d.docNum}`}
+                                  value={
+                                    allocatedTextByDocEntry[d.docEntry] ??
+                                    String(allocatedByDocEntry[d.docEntry] ?? d.openAmount)
+                                  }
+                                  style={{ width: '115px', textAlign: 'right' }}
+                                  onInput={(e) => {
+                                    const raw = (e.target as unknown as { value: string }).value;
+                                    setAllocatedTextByDocEntry((prev) => ({
+                                      ...prev,
+                                      [d.docEntry]: raw,
+                                    }));
+                                    const normalized = raw.replace(/\s/g, '').replace(',', '.');
+                                    const num = parseFloat(normalized);
                                     setAllocatedByDocEntry((prev) => ({
                                       ...prev,
                                       [d.docEntry]: Number.isFinite(num) ? num : 0,
                                     }));
-                                  }}
-                                  style={{
-                                    width: '86px',
-                                    padding: '3px 6px',
-                                    borderRadius: '4px',
-                                    border: '1px solid #0070f2',
-                                    fontSize: '12px',
-                                    fontWeight: 700,
-                                    textAlign: 'right',
                                   }}
                                 />
                               )}
@@ -782,21 +828,9 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
 
       {/* Expandable Raw Statement Record Footer */}
       <div style={{ borderTop: '1px solid #efefef', paddingTop: '8px' }}>
-        <button
-          type="button"
-          onClick={() => setShowRaw((v) => !v)}
-          style={{
-            background: 'none',
-            border: 'none',
-            padding: 0,
-            color: '#0070f2',
-            fontSize: '12px',
-            cursor: 'pointer',
-            fontWeight: 600,
-          }}
-        >
+        <Button design="Transparent" onClick={() => setShowRaw((v) => !v)}>
           {showRaw ? '▾ Ocultar Registo Bruto do Extrato' : '▸ Ver Registo Bruto do Extrato & Chave SHA-256'}
-        </button>
+        </Button>
         {showRaw && (
           <pre
             style={{

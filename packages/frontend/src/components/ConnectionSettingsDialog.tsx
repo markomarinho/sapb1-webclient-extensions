@@ -5,6 +5,7 @@ import {
   CheckBox,
   Dialog,
   Input,
+  Label,
   MessageStrip,
   ObjectStatus,
   SegmentedButton,
@@ -162,10 +163,9 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
           </div>
 
           <div>
-            <div style={fieldLabelStyle}>
-              URL do Backend Node.js (vazio = mesma origem; preencha ex: <code>http://servidor-b1:4010</code> se o
-              SPA correr dentro do Web Client noutro porto)
-            </div>
+            <Label style={fieldLabelStyle}>
+              URL do Backend Node.js (vazio = mesma origem; preencha ex: http://servidor-b1:4010 se o SPA correr noutro porto)
+            </Label>
             <Input
               placeholder="Vazio (mesma origem) ou http://<ip-servidor>:4010"
               value={backendUrl}
@@ -242,7 +242,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr', gap: '10px' }}>
             <div>
-              <div style={fieldLabelStyle}>Servidor SAP HANA (Host / IP)</div>
+              <Label style={fieldLabelStyle}>Servidor SAP HANA (Host / IP)</Label>
               <Input
                 value={settings.hanaHost}
                 style={{ width: '100%' }}
@@ -252,7 +252,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
               />
             </div>
             <div>
-              <div style={fieldLabelStyle}>Porto SQL (ex: 30015)</div>
+              <Label style={fieldLabelStyle}>Porto SQL (ex: 30015)</Label>
               <Input
                 value={String(settings.hanaPort)}
                 style={{ width: '100%' }}
@@ -265,7 +265,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
               />
             </div>
             <div>
-              <div style={fieldLabelStyle}>Schema da Empresa (SBO_...)</div>
+              <Label style={fieldLabelStyle}>Schema da Empresa (SBO_...)</Label>
               <Input
                 value={settings.hanaSchema}
                 style={{ width: '100%' }}
@@ -278,7 +278,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div>
-              <div style={fieldLabelStyle}>Utilizador Read-Only (criado pelo script SQL)</div>
+              <Label style={fieldLabelStyle}>Utilizador Read-Only (criado pelo script SQL)</Label>
               <Input
                 value={settings.hanaReadonlyUser}
                 style={{ width: '100%' }}
@@ -291,9 +291,9 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
               />
             </div>
             <div>
-              <div style={fieldLabelStyle}>
+              <Label style={fieldLabelStyle}>
                 Password HANA {settings.hasHanaPassword ? '(Guardada no Cofre — deixe vazio p/ manter)' : ''}
-              </div>
+              </Label>
               <Input
                 type="Password"
                 placeholder={settings.hasHanaPassword ? '••••••••' : 'Introduza a password'}
@@ -343,7 +343,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
             <div>
-              <div style={fieldLabelStyle}>URL do Service Layer (ex: https://b1-server:50000/b1s/v1)</div>
+              <Label style={fieldLabelStyle}>URL do Service Layer (ex: https://b1-server:50000/b1s/v1)</Label>
               <Input
                 value={settings.b1ServiceLayerUrl}
                 style={{ width: '100%' }}
@@ -356,7 +356,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
               />
             </div>
             <div>
-              <div style={fieldLabelStyle}>CompanyDB</div>
+              <Label style={fieldLabelStyle}>CompanyDB</Label>
               <Input
                 value={settings.b1CompanyDb}
                 style={{ width: '100%' }}
@@ -369,7 +369,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div>
-              <div style={fieldLabelStyle}>Utilizador SAP B1 (Fallback quando sem cookie B1SESSION)</div>
+              <Label style={fieldLabelStyle}>Utilizador SAP B1 (Fallback quando sem cookie B1SESSION)</Label>
               <Input
                 value={settings.b1TechUser}
                 style={{ width: '100%' }}
@@ -379,9 +379,9 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
               />
             </div>
             <div>
-              <div style={fieldLabelStyle}>
+              <Label style={fieldLabelStyle}>
                 Password SAP B1 {settings.hasB1TechPassword ? '(Guardada no Cofre — deixe vazio p/ manter)' : ''}
-              </div>
+              </Label>
               <Input
                 type="Password"
                 placeholder={settings.hasB1TechPassword ? '••••••••' : 'Introduza a password SAP B1'}
@@ -415,7 +415,6 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
 };
 
 const fieldLabelStyle: React.CSSProperties = {
-  fontSize: '11.5px',
-  color: '#556b82',
+  display: 'block',
   marginBottom: '4px',
 };

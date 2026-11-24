@@ -10,10 +10,10 @@ import {
   SegmentedButton,
   SegmentedButtonItem,
   Select,
-  ShellBar,
   Tag,
+  Title,
 } from '@ui5/webcomponents-react';
-import { api, formatEur } from './api';
+import { api, formatEur, isUsingNativeWebClientB1s } from './api';
 import { AuditLogDialog } from './components/AuditLogDialog';
 import { ConnectionSettingsDialog } from './components/ConnectionSettingsDialog';
 import { GlRulesDialog } from './components/GlRulesDialog';
@@ -158,12 +158,6 @@ export const App: React.FC = () => {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f5f6f7' }}>
-      {/* Native SAP Business One Web Client Fiori ShellBar */}
-      <ShellBar
-        primaryTitle="SAP Business One"
-        secondaryTitle="Reconciliação Bancária Assistida (SWIFT MT940 • Norma 43)"
-      />
-
       {/* KPI & Filter Toolbar */}
       <div
         style={{
@@ -177,19 +171,21 @@ export const App: React.FC = () => {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h2 style={{ margin: 0, fontSize: '20px', color: '#1d2d3e' }}>
-              Tesouraria &amp; Reconciliação Externa
-            </h2>
+            <Title level="H4">Tesouraria &amp; Reconciliação Externa</Title>
             {summary && (
               <Tag colorScheme={summary.mode === 'live' ? '8' : '6'}>
-                {summary.mode === 'live' ? 'SAP HANA Live + Service Layer' : 'Modo Simulação SAP HANA Local'}
+                {isUsingNativeWebClientB1s()
+                  ? 'Sessão SAP B1 Web Client Ativa'
+                  : summary.mode === 'live'
+                    ? 'SAP HANA Live + Service Layer'
+                    : 'Modo Simulação SAP HANA Local'}
               </Tag>
             )}
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <Button design="Transparent" onClick={() => setConnOpen(true)}>
-              Ligação SAP B1 / HANA
+              {isUsingNativeWebClientB1s() ? 'Diagnóstico Sessão B1' : 'Ligação SAP B1 / HANA'}
             </Button>
             <Button design="Transparent" onClick={() => setGlRulesOpen(true)}>
               Regras G/L
@@ -204,11 +200,9 @@ export const App: React.FC = () => {
             >
               Exportar CSV
             </Button>
-            {summary?.mode === 'mock' && (
-              <Button design="Default" onClick={() => void handleLoadSamples()} disabled={batchBusy}>
-                Carregar Exemplos (MT940 + Norma 43)
-              </Button>
-            )}
+            <Button design="Default" onClick={() => void handleLoadSamples()} disabled={batchBusy}>
+              Carregar Exemplos (MT940 + Norma 43)
+            </Button>
             <Button design="Default" onClick={() => setUploadOpen(true)}>
               Importar Extrato (.mt940 / .n43)
             </Button>
@@ -367,11 +361,9 @@ export const App: React.FC = () => {
                 <Button design="Emphasized" onClick={() => setUploadOpen(true)}>
                   Importar Ficheiro (.mt940 / .n43)
                 </Button>
-                {summary?.mode === 'mock' && (
-                  <Button design="Default" onClick={() => void handleLoadSamples()}>
-                    Carregar Exemplos (MT940 + Norma 43)
-                  </Button>
-                )}
+                <Button design="Default" onClick={() => void handleLoadSamples()}>
+                  Carregar Exemplos (MT940 + Norma 43)
+                </Button>
               </div>
             </div>
           ) : (

@@ -5,6 +5,7 @@ import {
   BusyIndicator,
   Dialog,
   Input,
+  Label,
   MessageStrip,
   Option,
   Select,
@@ -118,7 +119,7 @@ export const GlRulesDialog: React.FC<Props> = ({ open, onClose, onUpdated }) => 
           }}
         >
           <div>
-            <div style={{ fontSize: '11px', color: '#556b82', marginBottom: '4px' }}>Nome da Regra</div>
+            <Label style={{ display: 'block', marginBottom: '4px' }}>Nome da Regra</Label>
             <Input
               placeholder="Ex: Despesas Swift"
               value={name}
@@ -127,7 +128,7 @@ export const GlRulesDialog: React.FC<Props> = ({ open, onClose, onUpdated }) => 
             />
           </div>
           <div>
-            <div style={{ fontSize: '11px', color: '#556b82', marginBottom: '4px' }}>Sentido</div>
+            <Label style={{ display: 'block', marginBottom: '4px' }}>Sentido</Label>
             <Select
               style={{ width: '100%' }}
               onChange={(e) => {
@@ -144,9 +145,9 @@ export const GlRulesDialog: React.FC<Props> = ({ open, onClose, onUpdated }) => 
             </Select>
           </div>
           <div>
-            <div style={{ fontSize: '11px', color: '#556b82', marginBottom: '4px' }}>
+            <Label style={{ display: 'block', marginBottom: '4px' }}>
               Palavras-Chave (sep. vírgula)
-            </div>
+            </Label>
             <Input
               placeholder="COMISSAO,SWIFT,PORTES"
               value={keywordsPattern}
@@ -155,7 +156,7 @@ export const GlRulesDialog: React.FC<Props> = ({ open, onClose, onUpdated }) => 
             />
           </div>
           <div>
-            <div style={{ fontSize: '11px', color: '#556b82', marginBottom: '4px' }}>Conta G/L SAP B1</div>
+            <Label style={{ display: 'block', marginBottom: '4px' }}>Conta G/L SAP B1</Label>
             <Input
               placeholder="Ex: 622701"
               value={glAccountCode}
@@ -164,7 +165,7 @@ export const GlRulesDialog: React.FC<Props> = ({ open, onClose, onUpdated }) => 
             />
           </div>
           <div>
-            <div style={{ fontSize: '11px', color: '#556b82', marginBottom: '4px' }}>Designação Conta G/L</div>
+            <Label style={{ display: 'block', marginBottom: '4px' }}>Designação Conta G/L</Label>
             <Input
               placeholder="Ex: Serviços Bancários"
               value={glAccountName}
