@@ -1,0 +1,16 @@
+services:
+  b1-recon-backend:
+    build: .
+    container_name: sap-b1-pt-recon-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4010:4010"
+    env_file:
+      - .env
+    volumes:
+      - recon_data:/app/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  recon_data:

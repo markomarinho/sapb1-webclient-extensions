@@ -1,0 +1,13 @@
+{
+  "tiles": [
+    {
+      "text": "Reconciliação Bancária",
+      "subtitle": "SWIFT MT940 • Norma 43",
+      "icon": "sap-icon://money-bills",
+      "url": "index.html",
+      "linkmethod": "ExistingWindow",
+      "size": "1x1",
+      "enableTitleHeader": false
+    }
+  ]
+}
