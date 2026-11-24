@@ -1,14 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DashboardSummary, HouseBankAccount, StagedBankLine } from '@b1-recon/shared';
 import {
   Button,
   BusyIndicator,
   Input,
+  Label,
   MessageStrip,
   ObjectStatus,
   Option,
-  SegmentedButton,
-  SegmentedButtonItem,
   Select,
   Tag,
   Title,
@@ -28,6 +27,7 @@ export const App: React.FC = () => {
 
   const [selectedBankId, setSelectedBankId] = useState<string>('ALL');
   const [statusGroup, setStatusGroup] = useState<'PENDING' | 'RECONCILED' | 'IGNORED' | 'ALL'>('PENDING');
+  const [confidenceFilter, setConfidenceFilter] = useState<'ALL' | 'HIGH' | 'REVIEW' | 'NONE'>('ALL');
   const [search, setSearch] = useState<string>('');
 
   const [loading, setLoading] = useState<boolean>(true);
@@ -40,6 +40,7 @@ export const App: React.FC = () => {
   const [auditOpen, setAuditOpen] = useState(false);
   const [glRulesOpen, setGlRulesOpen] = useState(false);
   const [connOpen, setConnOpen] = useState(false);
+  const [headerExpanded, setHeaderExpanded] = useState(true);
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
@@ -73,6 +74,16 @@ export const App: React.FC = () => {
     void refreshAll();
   }, [refreshAll]);
 
+  const displayedLines = useMemo(() => {
+    if (confidenceFilter === 'ALL') return lines;
+    return lines.filter((l) => {
+      const conf = l.suggestions?.[0]?.confidence ?? l.topConfidence ?? 0;
+      if (confidenceFilter === 'HIGH') return conf >= 85;
+      if (confidenceFilter === 'REVIEW') return conf >= 50 && conf < 85;
+      return conf < 50;
+    });
+  }, [lines, confidenceFilter]);
+
   const handleLoadSamples = async () => {
     setBatchBusy(true);
     setBanner(null);
@@ -100,7 +111,7 @@ export const App: React.FC = () => {
       const res = await api.batchApprove(88, selectedBankId);
       setBanner({
         type: res.errors.length > 0 ? 'Information' : 'Positive',
-        text: `Reconciliação em lote concluída: ${res.reconciledCount} movimento(s) lançado(s) e reconciliado(s) no SAP B1.`,
+        text: `Reconciliação em lote concluída: ${res.reconciledCount} movimento(s) lançado(s) e reconciliado(s) no SAP Business One.`,
       });
       await refreshAll();
     } catch (err) {
@@ -113,7 +124,10 @@ export const App: React.FC = () => {
     }
   };
 
-  const selectedLine = lines.find((l) => l.id === selectedLineId) ?? null;
+  const selectedLine =
+    displayedLines.find((l) => l.id === selectedLineId) ??
+    lines.find((l) => l.id === selectedLineId) ??
+    null;
 
   const handleExportCsv = () => {
     const header = [
@@ -131,7 +145,7 @@ export const App: React.FC = () => {
     ];
     const rows = [
       header.join(';'),
-      ...lines.map((l) =>
+      ...displayedLines.map((l) =>
         [
           l.lineNumber,
           l.bankCode,
@@ -142,7 +156,10 @@ export const App: React.FC = () => {
           l.signedAmount.toFixed(2).replace('.', ','),
           l.status,
           `${l.topConfidence}%`,
-          `"${(l.suggestions?.[0]?.cardName ?? '').replace(/"/g, '""')}"`,
+          `"${(l.suggestions?.[0]?.journalLine?.cardName ?? l.suggestions?.[0]?.cardName ?? '').replace(
+            /"/g,
+            '""'
+          )}"`,
           `"${l.description.replace(/"/g, '""')}"`,
         ].join(';')
       ),
@@ -151,27 +168,47 @@ export const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Reconciliacao_Bancaria_SAP_B1_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `Extrato_Reconciliacao_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#f5f6f7' }}>
-      {/* KPI & Filter Toolbar */}
-      <div
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#f5f6f7',
+        color: '#1d2d3e',
+      }}
+    >
+      {/* SAP Business One Web Client DynamicPage Header */}
+      <header
         style={{
           background: '#ffffff',
           borderBottom: '1px solid #d9d9d9',
-          padding: '16px 24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        {/* DynamicPage Title Bar */}
+        <div
+          style={{
+            padding: '12px 24px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            borderBottom: headerExpanded ? '1px solid #ededed' : 'none',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Title level="H4">Tesouraria &amp; Reconciliação Externa</Title>
+            <Title level="H4" style={{ margin: 0 }}>
+              Processar Extratos Bancários Externos
+            </Title>
+            <span style={{ color: '#d9d9d9' }}>|</span>
+            <span style={{ fontSize: '13px', color: '#556b82', fontWeight: 500 }}>Vista Padrão</span>
             {summary && (
               <Tag
                 design={summary.mode === 'live' ? 'Positive' : 'Set2'}
@@ -179,295 +216,436 @@ export const App: React.FC = () => {
                 hideStateIcon
               >
                 {isUsingNativeWebClientB1s()
-                  ? 'Sessão SAP B1 Web Client Ativa'
+                  ? 'Ligado ao SAP B1'
                   : summary.mode === 'live'
-                    ? 'SAP HANA Live + Service Layer'
-                    : 'Modo Simulação SAP HANA Local'}
+                    ? 'SAP HANA Live'
+                    : 'Simulação Local'}
               </Tag>
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <Button design="Transparent" onClick={() => setConnOpen(true)}>
-              {isUsingNativeWebClientB1s() ? 'Diagnóstico Sessão B1' : 'Ligação SAP B1 / HANA'}
-            </Button>
-            <Button design="Transparent" onClick={() => setGlRulesOpen(true)}>
-              Regras G/L
-            </Button>
-            <Button design="Transparent" onClick={() => setAuditOpen(true)}>
-              Auditoria
+          {/* Native SAP B1 Web Client Header Action Toolbar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <Button design="Emphasized" onClick={() => setUploadOpen(true)}>
+              Importar Extrato
             </Button>
             <Button
-              design="Transparent"
-              disabled={lines.length === 0}
-              onClick={handleExportCsv}
-            >
-              Exportar CSV
-            </Button>
-            <Button design="Default" onClick={() => void handleLoadSamples()} disabled={batchBusy}>
-              Carregar Exemplos (MT940 + Norma 43)
-            </Button>
-            <Button design="Default" onClick={() => setUploadOpen(true)}>
-              Importar Extrato (.mt940 / .n43)
-            </Button>
-            <Button
-              design="Emphasized"
+              design="Default"
               disabled={batchBusy || !summary || summary.highConfidenceReady === 0}
               onClick={() => void handleBatchApprove()}
             >
-              Aprovar Sugestões Elevadas ({summary?.highConfidenceReady ?? 0})
+              Reconciliar Automáticos ({summary?.highConfidenceReady ?? 0})
+            </Button>
+            <Button design="Transparent" onClick={() => setGlRulesOpen(true)}>
+              Regras de Contabilização G/L
+            </Button>
+            <Button design="Transparent" onClick={() => void handleLoadSamples()} disabled={batchBusy}>
+              Carregar Demonstração
+            </Button>
+            <Button design="Transparent" onClick={() => setAuditOpen(true)}>
+              Registo de Auditoria
+            </Button>
+            <Button design="Transparent" onClick={() => setConnOpen(true)}>
+              {isUsingNativeWebClientB1s() ? 'Diagnóstico' : 'Ligação'}
+            </Button>
+            <Button design="Transparent" onClick={() => setHeaderExpanded((v) => !v)}>
+              {headerExpanded ? 'Ocultar Cabeçalho ▲' : 'Mostrar Cabeçalho ▼'}
             </Button>
           </div>
         </div>
 
-        {/* KPI Cards */}
-        {summary && (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
-              gap: '12px',
-            }}
-          >
-            <div style={kpiCardStyle}>
-              <div style={kpiLabelStyle}>Por Reconciliar</div>
-              <div style={{ fontSize: '22px', fontWeight: 700, color: '#1d2d3e' }}>
-                {summary.totalUnreconciled}
+        {/* DynamicPage Expandable FilterBar & Analytical Facets */}
+        {headerExpanded && (
+          <div style={{ padding: '14px 24px 16px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* SAP B1 Web Client Standard FilterBar */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr)) auto',
+                gap: '12px',
+                alignItems: 'end',
+              }}
+            >
+              <div>
+                <Label style={filterLabelStyle}>Pesquisar</Label>
+                <Input
+                  placeholder="Descrição, NIF, IBAN, Multibanco, Nº Doc, Valor..."
+                  value={search}
+                  style={{ width: '100%' }}
+                  onInput={(e) => setSearch((e.target as unknown as { value: string }).value)}
+                />
+              </div>
+
+              <div>
+                <Label style={filterLabelStyle}>Conta do Banco da Empresa:</Label>
+                <Select
+                  style={{ width: '100%' }}
+                  onChange={(e) => {
+                    const bankId = e.detail.selectedOption?.getAttribute('data-bank-id');
+                    if (bankId) setSelectedBankId(bankId);
+                  }}
+                >
+                  <Option data-bank-id="ALL" selected={selectedBankId === 'ALL'}>
+                    Todas ({houseBanks.length})
+                  </Option>
+                  {houseBanks.map((hb) => (
+                    <Option key={hb.id} data-bank-id={hb.id} selected={selectedBankId === hb.id}>
+                      {hb.bankCode} — {hb.accountLabel} (G/L {hb.glAccountCode})
+                    </Option>
+                  ))}
+                </Select>
+              </div>
+
+              <div>
+                <Label style={filterLabelStyle}>Estado do Movimento:</Label>
+                <Select
+                  style={{ width: '100%' }}
+                  onChange={(e) => {
+                    const st = e.detail.selectedOption?.getAttribute('data-status') as
+                      | 'PENDING'
+                      | 'RECONCILED'
+                      | 'IGNORED'
+                      | 'ALL'
+                      | undefined;
+                    if (st) setStatusGroup(st);
+                  }}
+                >
+                  <Option data-status="PENDING" selected={statusGroup === 'PENDING'}>
+                    Em Aberto / Por Reconciliar
+                  </Option>
+                  <Option data-status="RECONCILED" selected={statusGroup === 'RECONCILED'}>
+                    Reconciliados
+                  </Option>
+                  <Option data-status="IGNORED" selected={statusGroup === 'IGNORED'}>
+                    Ignorados
+                  </Option>
+                  <Option data-status="ALL" selected={statusGroup === 'ALL'}>
+                    Todos
+                  </Option>
+                </Select>
+              </div>
+
+              <div>
+                <Label style={filterLabelStyle}>Nível de Confiança:</Label>
+                <Select
+                  style={{ width: '100%' }}
+                  onChange={(e) => {
+                    const cf = e.detail.selectedOption?.getAttribute('data-conf') as
+                      | 'ALL'
+                      | 'HIGH'
+                      | 'REVIEW'
+                      | 'NONE'
+                      | undefined;
+                    if (cf) setConfidenceFilter(cf);
+                  }}
+                >
+                  <Option data-conf="ALL" selected={confidenceFilter === 'ALL'}>
+                    Todos
+                  </Option>
+                  <Option data-conf="HIGH" selected={confidenceFilter === 'HIGH'}>
+                    Automático / Elevada (≥85%)
+                  </Option>
+                  <Option data-conf="REVIEW" selected={confidenceFilter === 'REVIEW'}>
+                    Revisão Recomendada (50%–84%)
+                  </Option>
+                  <Option data-conf="NONE" selected={confidenceFilter === 'NONE'}>
+                    Sem Correspondência Direta
+                  </Option>
+                </Select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <Button design="Emphasized" onClick={() => void refreshAll()} disabled={loading}>
+                  Ir
+                </Button>
+                {(search || selectedBankId !== 'ALL' || statusGroup !== 'PENDING' || confidenceFilter !== 'ALL') && (
+                  <Button
+                    design="Transparent"
+                    onClick={() => {
+                      setSearch('');
+                      setSelectedBankId('ALL');
+                      setStatusGroup('PENDING');
+                      setConfidenceFilter('ALL');
+                    }}
+                  >
+                    Repor Filtros
+                  </Button>
+                )}
               </div>
             </div>
-            <div style={kpiCardStyle}>
-              <div style={kpiLabelStyle}>Sugestão Elevada (≥85%)</div>
-              <div style={{ fontSize: '22px', fontWeight: 700, color: '#188918' }}>
-                {summary.highConfidenceReady}
+
+            {/* SAP Fiori Object Header Facets (KPIs) */}
+            {summary && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '24px',
+                  paddingTop: '10px',
+                  borderTop: '1px solid #f0f0f0',
+                }}
+              >
+                <div style={facetItemStyle}>
+                  <span style={facetLabelStyle}>Movimentos em Aberto</span>
+                  <span style={{ fontSize: '18px', fontWeight: 700, color: '#1d2d3e' }}>
+                    {summary.totalUnreconciled}
+                  </span>
+                </div>
+                <div style={facetDividerStyle}>
+                  <span style={facetLabelStyle}>Prontos p/ Automático (≥85%)</span>
+                  <span style={{ fontSize: '18px', fontWeight: 700, color: '#107e3e' }}>
+                    {summary.highConfidenceReady}
+                  </span>
+                </div>
+                <div style={facetDividerStyle}>
+                  <span style={facetLabelStyle}>Revisão Manual</span>
+                  <span style={{ fontSize: '18px', fontWeight: 700, color: '#e9730c' }}>
+                    {summary.needsReview}
+                  </span>
+                </div>
+                <div style={facetDividerStyle}>
+                  <span style={facetLabelStyle}>Recebimentos Pendentes</span>
+                  <span style={{ fontSize: '16px', fontWeight: 700, color: '#107e3e' }}>
+                    +{formatEur(summary.unreconciledInflowEur)}
+                  </span>
+                </div>
+                <div style={facetDividerStyle}>
+                  <span style={facetLabelStyle}>Pagamentos Pendentes</span>
+                  <span style={{ fontSize: '16px', fontWeight: 700, color: '#bb0000' }}>
+                    -{formatEur(summary.unreconciledOutflowEur)}
+                  </span>
+                </div>
+                <div style={facetDividerStyle}>
+                  <span style={facetLabelStyle}>Reconciliados</span>
+                  <span style={{ fontSize: '18px', fontWeight: 700, color: '#0070f2' }}>
+                    {summary.reconciledCount}
+                  </span>
+                </div>
               </div>
-            </div>
-            <div style={kpiCardStyle}>
-              <div style={kpiLabelStyle}>Requer Revisão Manual</div>
-              <div style={{ fontSize: '22px', fontWeight: 700, color: '#e76500' }}>{summary.needsReview}</div>
-            </div>
-            <div style={kpiCardStyle}>
-              <div style={kpiLabelStyle}>Entradas Pendentes</div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#188918' }}>
-                +{formatEur(summary.unreconciledInflowEur)}
-              </div>
-            </div>
-            <div style={kpiCardStyle}>
-              <div style={kpiLabelStyle}>Saídas Pendentes</div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#aa0808' }}>
-                -{formatEur(summary.unreconciledOutflowEur)}
-              </div>
-            </div>
-            <div style={kpiCardStyle}>
-              <div style={kpiLabelStyle}>Reconciliados no SAP B1</div>
-              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0070f2' }}>
-                {summary.reconciledCount}
-              </div>
-            </div>
+            )}
           </div>
         )}
-
-        {/* Filter Bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <Select
-              onChange={(e) => {
-                const bankId = e.detail.selectedOption?.getAttribute('data-bank-id');
-                if (bankId) setSelectedBankId(bankId);
-              }}
-            >
-              <Option data-bank-id="ALL" selected={selectedBankId === 'ALL'}>
-                 Todas as Contas Bancárias
-              </Option>
-              {houseBanks.map((hb) => (
-                <Option key={hb.id} data-bank-id={hb.id} selected={selectedBankId === hb.id}>
-                  {hb.bankCode} — {hb.accountLabel} (G/L {hb.glAccountCode})
-                </Option>
-              ))}
-            </Select>
-
-            <SegmentedButton
-              onSelectionChange={(e) => {
-                const st = e.detail.selectedItems?.[0]?.getAttribute('data-status') as
-                  | 'PENDING'
-                  | 'RECONCILED'
-                  | 'IGNORED'
-                  | 'ALL'
-                  | undefined;
-                if (st) setStatusGroup(st);
-              }}
-            >
-              <SegmentedButtonItem data-status="PENDING" selected={statusGroup === 'PENDING'}>
-                Pendentes
-              </SegmentedButtonItem>
-              <SegmentedButtonItem data-status="RECONCILED" selected={statusGroup === 'RECONCILED'}>
-                Reconciliados
-              </SegmentedButtonItem>
-              <SegmentedButtonItem data-status="IGNORED" selected={statusGroup === 'IGNORED'}>
-                Ignorados
-              </SegmentedButtonItem>
-              <SegmentedButtonItem data-status="ALL" selected={statusGroup === 'ALL'}>
-                Todos
-              </SegmentedButtonItem>
-            </SegmentedButton>
-          </div>
-
-          <Input
-            placeholder="Pesquisar NIF, IBAN, Multibanco, Fatura, Valor..."
-            value={search}
-            style={{ width: '320px' }}
-            onInput={(e) => setSearch((e.target as unknown as { value: string }).value)}
-          />
-        </div>
-      </div>
+      </header>
 
       {banner && (
-        <div style={{ padding: '12px 24px 0 24px' }}>
+        <div style={{ padding: '10px 24px 0 24px' }}>
           <MessageStrip design={banner.type} onClose={() => setBanner(null)}>
             {banner.text}
           </MessageStrip>
         </div>
       )}
 
-      {/* Master-Detail Split Workspace */}
-      <div
+      {/* SAP Fiori FlexibleColumnLayout Workspace (List Report Table + Object Page Inspector) */}
+      <main
         style={{
           flex: 1,
-          padding: '16px 24px 24px 24px',
+          padding: '12px 24px 20px 24px',
           display: 'grid',
-          gridTemplateColumns: selectedLine ? '1.15fr 1fr' : '1fr',
-          gap: '16px',
+          gridTemplateColumns: selectedLine ? '1.1fr 1fr' : '1fr',
+          gap: '12px',
           alignItems: 'start',
         }}
       >
-        {/* Left: Bank Statement Movements Table */}
-        <div
+        {/* Left Column: SAP B1 Web Client List Report Table */}
+        <section
           style={{
             background: '#ffffff',
             border: '1px solid #d9d9d9',
-            borderRadius: '10px',
+            borderRadius: '4px',
             overflow: 'hidden',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
           }}
         >
+          {/* Fiori Table Header Toolbar */}
+          <div
+            style={{
+              padding: '8px 16px',
+              borderBottom: '1px solid #e5e5e5',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#ffffff',
+            }}
+          >
+            <Title level="H5" style={{ margin: 0, fontSize: '15px' }}>
+              Linhas do Extrato Bancário ({displayedLines.length})
+            </Title>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <Button design="Transparent" onClick={() => setUploadOpen(true)}>
+                Importar Ficheiro
+              </Button>
+              <Button
+                design="Transparent"
+                disabled={displayedLines.length === 0}
+                onClick={handleExportCsv}
+              >
+                Exportar
+              </Button>
+              <Button design="Transparent" onClick={() => void refreshAll()} disabled={loading}>
+                Atualizar
+              </Button>
+            </div>
+          </div>
+
           {loading ? (
             <div style={{ padding: '48px', textAlign: 'center' }}>
-              <BusyIndicator active size="L" />
+              <BusyIndicator active size="M" />
             </div>
-          ) : lines.length === 0 ? (
-            <div style={{ padding: '48px 24px', textAlign: 'center', color: '#556b82' }}>
-              <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px', color: '#1d2d3e' }}>
-                Nenhum movimento bancário neste filtro
+          ) : displayedLines.length === 0 ? (
+            <div style={{ padding: '44px 24px', textAlign: 'center', color: '#556b82' }}>
+              <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '6px', color: '#1d2d3e' }}>
+                Não foram encontrados movimentos bancários
               </div>
               <div style={{ fontSize: '13px', marginBottom: '16px' }}>
-                Importe um extrato bancário nos formatos SWIFT MT940 ou Norma 43 para
-                gerar sugestões automáticas a partir do SAP HANA.
+                Importe um ficheiro de extrato bancário (SWIFT MT940 ou Norma 43) ou ajuste os filtros no cabeçalho.
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
                 <Button design="Emphasized" onClick={() => setUploadOpen(true)}>
-                  Importar Ficheiro (.mt940 / .n43)
+                  Importar Extrato
                 </Button>
                 <Button design="Default" onClick={() => void handleLoadSamples()}>
-                  Carregar Exemplos (MT940 + Norma 43)
+                  Carregar Dados de Demonstração
                 </Button>
               </div>
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ background: '#f5f6f7', borderBottom: '1px solid #d9d9d9', textAlign: 'left' }}>
-                  <th style={{ padding: '10px 12px' }}>Banco / Data</th>
-                  <th style={{ padding: '10px 12px' }}>Descrição &amp; Entidade</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Montante</th>
-                  <th style={{ padding: '10px 12px' }}>Sugestão SAP HANA</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((l) => {
-                  const isSelected = l.id === selectedLineId;
-                  const topSug = l.suggestions?.[0];
-                  return (
-                    <tr
-                      key={l.id}
-                      onClick={() => setSelectedLineId(l.id)}
-                      style={{
-                        cursor: 'pointer',
-                        borderBottom: '1px solid #efefef',
-                        background: isSelected ? '#ebf5fe' : '#ffffff',
-                      }}
-                    >
-                      <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: 700 }}>{l.bankCode}</div>
-                        <div style={{ fontSize: '11px', color: '#556b82' }}>{l.bookingDate}</div>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div
-                          style={{
-                            fontWeight: 600,
-                            color: '#1d2d3e',
-                            maxWidth: '340px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {l.description}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#556b82' }}>
-                          {topSug
-                            ? `Sugerido: ${topSug.cardCode ? `${topSug.cardCode} — ` : ''}${
-                                topSug.journalLine?.cardName || topSug.cardName || ''
-                              }`
-                            : `Ref: ${l.bankReference || '—'}`}
-                        </div>
-                      </td>
-                      <td
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr
+                    style={{
+                      background: '#f5f6f7',
+                      borderBottom: '1px solid #d9d9d9',
+                      textAlign: 'left',
+                      color: '#32363a',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <th style={{ padding: '9px 12px', fontWeight: 600 }}>Data</th>
+                    <th style={{ padding: '9px 10px', fontWeight: 600 }}>Conta</th>
+                    <th style={{ padding: '9px 12px', fontWeight: 600 }}>Descrição &amp; Parceiro Sugerido</th>
+                    <th style={{ padding: '9px 12px', fontWeight: 600, textAlign: 'right' }}>Montante</th>
+                    <th style={{ padding: '9px 12px', fontWeight: 600 }}>Estado / Sugestão</th>
+                    <th style={{ padding: '9px 8px', width: '18px' }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedLines.map((l) => {
+                    const isSelected = l.id === selectedLineId;
+                    const topSug = l.suggestions?.[0];
+                    const partnerLabel = topSug
+                      ? `${topSug.cardCode ? `${topSug.cardCode} — ` : ''}${
+                          topSug.journalLine?.cardName || topSug.cardName || ''
+                        }`
+                      : '';
+                    return (
+                      <tr
+                        key={l.id}
+                        onClick={() => setSelectedLineId(l.id)}
                         style={{
-                          padding: '10px 12px',
-                          textAlign: 'right',
-                          fontWeight: 700,
-                          whiteSpace: 'nowrap',
-                          color: l.direction === 'CREDIT' ? '#188918' : '#aa0808',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid #e5e5e5',
+                          background: isSelected ? '#ebf5fe' : '#ffffff',
+                          borderLeft: isSelected ? '3px solid #0070f2' : '3px solid transparent',
                         }}
                       >
-                        {l.direction === 'CREDIT' ? '+' : '-'}
-                        {formatEur(l.amount)}
-                      </td>
-                      <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
-                        {l.status === 'RECONCILED' ? (
-                          <ObjectStatus state="Positive" showDefaultIcon>
-                            Reconciliado
-                          </ObjectStatus>
-                        ) : l.status === 'ERROR' ? (
-                          <ObjectStatus state="Negative" showDefaultIcon>
-                            Erro (Retentar)
-                          </ObjectStatus>
-                        ) : l.status === 'IGNORED' ? (
-                          <ObjectStatus state="None">Ignorado</ObjectStatus>
-                        ) : topSug ? (
-                          <ObjectStatus
-                            state={
-                              topSug.confidence >= 85
-                                ? 'Positive'
-                                : topSug.confidence >= 70
-                                  ? 'Critical'
-                                  : 'Information'
-                            }
-                            showDefaultIcon
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                          <div style={{ fontWeight: 600, color: '#1d2d3e' }}>{l.bookingDate}</div>
+                          <div style={{ fontSize: '11px', color: '#6a6d70' }}>#{l.lineNumber}</div>
+                        </td>
+                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                          <div style={{ fontWeight: 600, color: '#1d2d3e' }}>{l.bankCode}</div>
+                          <div style={{ fontSize: '11px', color: '#6a6d70' }}>G/L {l.glAccountCode}</div>
+                        </td>
+                        <td style={{ padding: '9px 12px', verticalAlign: 'middle' }}>
+                          <div
+                            style={{
+                              fontWeight: 500,
+                              color: '#1d2d3e',
+                              maxWidth: '330px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={l.description}
                           >
-                            {topSug.confidence}% ({topSug.tier === 'HIGH' ? 'Auto' : 'Rever'})
-                          </ObjectStatus>
-                        ) : (
-                          <ObjectStatus state="None">Sem Match</ObjectStatus>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            {l.description}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '11.5px',
+                              color: topSug ? '#0064d9' : '#6a6d70',
+                              maxWidth: '330px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {partnerLabel || `Ref: ${l.bankReference || '—'}`}
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            padding: '9px 12px',
+                            textAlign: 'right',
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                            verticalAlign: 'middle',
+                            color: l.direction === 'CREDIT' ? '#107e3e' : '#bb0000',
+                          }}
+                        >
+                          {l.direction === 'CREDIT' ? '+' : '-'}
+                          {formatEur(l.amount)}
+                        </td>
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                          {l.status === 'RECONCILED' ? (
+                            <ObjectStatus state="Positive" showDefaultIcon>
+                              Reconciliado
+                            </ObjectStatus>
+                          ) : l.status === 'ERROR' ? (
+                            <ObjectStatus state="Negative" showDefaultIcon>
+                              Erro
+                            </ObjectStatus>
+                          ) : l.status === 'IGNORED' ? (
+                            <ObjectStatus state="None">Ignorado</ObjectStatus>
+                          ) : topSug ? (
+                            <ObjectStatus
+                              state={
+                                topSug.confidence >= 85
+                                  ? 'Positive'
+                                  : topSug.confidence >= 70
+                                    ? 'Critical'
+                                    : 'Information'
+                              }
+                              showDefaultIcon
+                            >
+                              {topSug.confidence}% ({topSug.tier === 'HIGH' ? 'Automático' : 'Rever'})
+                            </ObjectStatus>
+                          ) : (
+                            <ObjectStatus state="None">Manual</ObjectStatus>
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            padding: '9px 10px 9px 0',
+                            color: '#6a6d70',
+                            fontSize: '16px',
+                            textAlign: 'right',
+                            verticalAlign: 'middle',
+                          }}
+                        >
+                          ›
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </section>
 
-        {/* Right: Detailed Candidate & Action Inspector */}
+        {/* Right Column: SAP B1 Web Client Object Page Detail Inspector */}
         {selectedLine && (
           <SuggestionInspector
             line={selectedLine}
@@ -477,7 +655,7 @@ export const App: React.FC = () => {
             }}
           />
         )}
-      </div>
+      </main>
 
       <StatementUploadDialog
         open={uploadOpen}
@@ -512,17 +690,28 @@ export const App: React.FC = () => {
   );
 };
 
-const kpiCardStyle: React.CSSProperties = {
-  background: '#f8f9fa',
-  border: '1px solid #e5e7eb',
-  borderRadius: '8px',
-  padding: '10px 14px',
+const filterLabelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: '4px',
+  fontSize: '12px',
+  color: '#556b82',
 };
 
-const kpiLabelStyle: React.CSSProperties = {
-  fontSize: '11px',
+const facetItemStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '2px',
+};
+
+const facetDividerStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '2px',
+  borderLeft: '1px solid #e5e5e5',
+  paddingLeft: '20px',
+};
+
+const facetLabelStyle: React.CSSProperties = {
+  fontSize: '11.5px',
   color: '#556b82',
-  marginBottom: '4px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.02em',
 };
