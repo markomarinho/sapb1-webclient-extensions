@@ -1,7 +1,7 @@
 _schema-version: "3.2"
 ID: pt-company-b1-bankreconciliation
-version: 1.0.0
-description: "SAP Business One Web Client Extension — Reconciliação Bancária (SWIFT MT940 & Norma 43)"
+version: 1.0.1
+description: "SAP Business One Web Client Extension - Bank Reconciliation (SWIFT MT940 and Norma 43)"
 provider: SAP
 
 modules:
