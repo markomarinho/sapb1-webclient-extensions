@@ -75,7 +75,8 @@ export function matchesAmountValue(targetAmount: number, rawQuery: string): bool
 /**
  * Filters open SAP B1 AR/AP Invoices across all Document Numbering Series by
  * Document Number (DocNum / SeriesName+DocNum / AT Number / NumAtCard / DocEntry),
- * Series Name, CardCode, CardName, or Value (OpenAmount / DocTotal).
+ * Series Name, CardCode, CardName, NIF, Dates, Comments, or Value (OpenAmount / DocTotal).
+ * Supports multi-token queries (e.g. "F10015 5021" or "FA 2026 1042").
  */
 export function filterManualOpenDocuments(
   docs: B1OpenDocument[],
@@ -94,39 +95,52 @@ export function filterManualOpenDocuments(
   const qNorm = normalizeSearchString(query);
   if (!qNorm) return seriesFiltered;
 
-  const qStripHash = qNorm.replace(/^#/, '');
+  const tokens = qNorm
+    .split(/\s+/)
+    .map((t) => t.replace(/^#/, ''))
+    .filter(Boolean);
 
   return seriesFiltered.filter((doc) => {
     const seriesLabel = doc.seriesName ?? (doc.seriesCode != null ? String(doc.seriesCode) : '');
-    const numberFields = [
-      String(doc.docNum),
-      String(doc.docEntry),
-      doc.atDocNumber ?? '',
-      seriesLabel,
-      seriesLabel ? `${seriesLabel}/${doc.docNum}` : '',
-      seriesLabel ? `${seriesLabel} ${doc.docNum}` : '',
-      seriesLabel ? `${seriesLabel}-${doc.docNum}` : '',
-    ]
-      .map(normalizeSearchString)
-      .join(' ');
+    const haystack = normalizeSearchString(
+      [
+        String(doc.docNum),
+        String(doc.docEntry),
+        doc.atDocNumber ?? '',
+        seriesLabel,
+        seriesLabel ? `${seriesLabel}/${doc.docNum}` : '',
+        seriesLabel ? `${seriesLabel}-${doc.docNum}` : '',
+        doc.cardCode,
+        doc.cardName,
+        doc.nif ?? '',
+        doc.docDate,
+        doc.dueDate,
+        doc.comments ?? '',
+        doc.multibancoRef ?? '',
+      ].join(' ')
+    );
 
-    const bpCode = normalizeSearchString(doc.cardCode);
-    const bpName = normalizeSearchString(doc.cardName);
-
-    if (numberFields.includes(qStripHash)) return true;
-    if (bpCode.includes(qNorm)) return true;
-    if (bpName.includes(qNorm)) return true;
-    if (matchesAmountValue(doc.openAmount, query) || matchesAmountValue(doc.docTotal, query)) {
+    if (
+      haystack.includes(qNorm.replace(/^#/, '')) ||
+      matchesAmountValue(doc.openAmount, query) ||
+      matchesAmountValue(doc.docTotal, query)
+    ) {
       return true;
     }
 
-    return false;
+    // Multi-token match: every token must match either the text haystack or the document amount
+    return tokens.every(
+      (tok) =>
+        haystack.includes(tok) ||
+        matchesAmountValue(doc.openAmount, tok) ||
+        matchesAmountValue(doc.docTotal, tok)
+    );
   });
 }
 
 /**
  * Filters unreconciled SAP B1 Journal Entry lines by Number (TransId / SourceDocNum / Ref1 / Ref2),
- * CardCode, CardName / Memo, or Value.
+ * CardCode, CardName / Memo, NIF, Date, or Value.
  */
 export function filterManualJournalLines(
   lines: B1UnreconciledJournalLine[],
@@ -135,26 +149,37 @@ export function filterManualJournalLines(
   const qNorm = normalizeSearchString(query);
   if (!qNorm) return lines;
 
-  const qStripHash = qNorm.replace(/^#/, '');
+  const tokens = qNorm
+    .split(/\s+/)
+    .map((t) => t.replace(/^#/, ''))
+    .filter(Boolean);
 
   return lines.filter((je) => {
-    const numberFields = [
-      String(je.transId),
-      je.sourceDocNum != null ? String(je.sourceDocNum) : '',
-      je.ref1 ?? '',
-      je.ref2 ?? '',
-    ]
-      .map(normalizeSearchString)
-      .join(' ');
+    const haystack = normalizeSearchString(
+      [
+        String(je.transId),
+        je.sourceDocNum != null ? String(je.sourceDocNum) : '',
+        je.ref1 ?? '',
+        je.ref2 ?? '',
+        je.cardCode ?? '',
+        je.contraAct ?? '',
+        je.cardName ?? '',
+        je.nif ?? '',
+        je.memo ?? '',
+        je.refDate,
+        je.dueDate,
+      ].join(' ')
+    );
 
-    const bpCode = normalizeSearchString(`${je.cardCode ?? ''} ${je.contraAct ?? ''}`);
-    const bpNameOrMemo = normalizeSearchString(`${je.cardName ?? ''} ${je.memo ?? ''}`);
+    if (
+      haystack.includes(qNorm.replace(/^#/, '')) ||
+      matchesAmountValue(Math.abs(je.signedAmount), query)
+    ) {
+      return true;
+    }
 
-    if (numberFields.includes(qStripHash)) return true;
-    if (bpCode.includes(qNorm)) return true;
-    if (bpNameOrMemo.includes(qNorm)) return true;
-    if (matchesAmountValue(Math.abs(je.signedAmount), query)) return true;
-
-    return false;
+    return tokens.every(
+      (tok) => haystack.includes(tok) || matchesAmountValue(Math.abs(je.signedAmount), tok)
+    );
   });
 }

@@ -162,10 +162,15 @@ export const api = {
 
   getManualCandidates(
     direction: 'CREDIT' | 'DEBIT',
-    glAccountCode: string
+    glAccountCode: string,
+    search?: string,
+    forceRefresh = false
   ): Promise<{ openDocuments: B1OpenDocument[]; journalLines: B1UnreconciledJournalLine[] }> {
-    if (isUsingNativeWebClientB1s()) return webClientB1sAdapter.getManualCandidates(direction, glAccountCode);
+    if (isUsingNativeWebClientB1s()) {
+      return webClientB1sAdapter.getManualCandidates(direction, glAccountCode, search, forceRefresh);
+    }
     const sp = new URLSearchParams({ direction, glAccountCode });
+    if (search?.trim()) sp.set('search', search.trim());
     return requestJson(`/api/b1/candidates?${sp.toString()}`);
   },
 

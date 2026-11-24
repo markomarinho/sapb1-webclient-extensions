@@ -188,41 +188,51 @@ async function b1sFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * Fetches all pages of an OData entity collection from SAP B1 Service Layer.
- * Without Prefer: odata.maxpagesize and following @odata.nextLink / odata.nextLink,
- * SAP B1 Service Layer returns only 20 records (typically only from the default/earliest series).
+ * Fetches all pages of an OData entity collection from SAP B1 Service Layer using deterministic $skip pagination.
+ * Without Prefer: odata.maxpagesize and following pages, SAP B1 Service Layer returns only 20 records per request.
+ * Uses $skip on the original query path so reverse-proxy nextLink rewrites never break pagination,
+ * and preserves all fetched pages even if a later page fails.
  */
 async function b1sFetchAllPages<T = Record<string, unknown>>(
   initialPath: string,
-  maxRecords = 2500
+  maxRecords = 5000
 ): Promise<T[]> {
   const all: T[] = [];
-  let nextPath: string | undefined = initialPath;
+  const baseWithoutSkip = initialPath.replace(/[?&]\$skip=\d+/g, '');
+  const sep = baseWithoutSkip.includes('?') ? '&' : '?';
+  let firstPageLen = 0;
 
-  while (nextPath && all.length < maxRecords) {
-    const page: {
+  while (all.length < maxRecords) {
+    const pageUrl = all.length === 0 ? baseWithoutSkip : `${baseWithoutSkip}${sep}$skip=${all.length}`;
+    let page: {
       value?: T[];
       '@odata.nextLink'?: string;
       'odata.nextLink'?: string;
-    } = await b1sFetch(nextPath);
-
-    if (Array.isArray(page.value)) {
-      all.push(...page.value);
-    }
-
-    const rawNext = page['@odata.nextLink'] || page['odata.nextLink'];
-    if (!rawNext || !page.value || page.value.length === 0) {
+    };
+    try {
+      page = await b1sFetch(pageUrl);
+    } catch {
       break;
     }
 
-    // Normalize relative or full URL nextLink into a path relative to /b1s/v1
-    if (rawNext.startsWith('http://') || rawNext.startsWith('https://')) {
-      const u = new URL(rawNext);
-      nextPath = u.pathname + u.search;
-    } else if (rawNext.startsWith('/')) {
-      nextPath = rawNext;
-    } else {
-      nextPath = `/${rawNext}`;
+    const items = Array.isArray(page?.value) ? page.value : [];
+    if (items.length === 0) {
+      break;
+    }
+
+    if (firstPageLen === 0) {
+      firstPageLen = items.length;
+    }
+
+    all.push(...items);
+
+    const hasNextLink = Boolean(page['@odata.nextLink'] || page['odata.nextLink']);
+    // Continue if Service Layer indicates a nextLink OR if the page was full (e.g. 20 items default page size)
+    if (!hasNextLink && items.length < firstPageLen) {
+      break;
+    }
+    if (!hasNextLink && items.length < 20) {
+      break;
     }
   }
 
@@ -283,7 +293,7 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
       const docSelect =
         "$filter=DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'&$select=DocEntry,DocNum,Series,NumAtCard,CardCode,CardName,FederalTaxID,DocDate,DocDueDate,DocCurrency,DocTotal,PaidToDate,Comments&$orderby=DocDate desc";
 
-      const [hbRes, seriesNameByCode, arInvs, arCms, apInvs, apCms, jeRes] = await Promise.all([
+      const [hbRes, seriesNameByCode, arInvs, arCms, apInvs, apCms, jeList] = await Promise.all([
         b1sFetch<{
           value?: Array<{
             AbsoluteEntry: number;
@@ -297,34 +307,33 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
           () => ({ value: [] })
         ),
         loadSeriesMapOnce(),
-        b1sFetchAllPages<Record<string, unknown>>(`/Invoices?${docSelect}`, 1000).catch(() => []),
-        b1sFetchAllPages<Record<string, unknown>>(`/CreditNotes?${docSelect}`, 500).catch(() => []),
-        b1sFetchAllPages<Record<string, unknown>>(`/PurchaseInvoices?${docSelect}`, 1000).catch(() => []),
-        b1sFetchAllPages<Record<string, unknown>>(`/PurchaseCreditNotes?${docSelect}`, 500).catch(() => []),
-        b1sFetch<{
-          value?: Array<{
-            JdtNum: number;
-            ReferenceDate?: string;
-            DueDate?: string;
-            Memo?: string;
-            Reference?: string;
+        b1sFetchAllPages<Record<string, unknown>>(`/Invoices?${docSelect}`, 5000).catch(() => []),
+        b1sFetchAllPages<Record<string, unknown>>(`/CreditNotes?${docSelect}`, 1500).catch(() => []),
+        b1sFetchAllPages<Record<string, unknown>>(`/PurchaseInvoices?${docSelect}`, 5000).catch(() => []),
+        b1sFetchAllPages<Record<string, unknown>>(`/PurchaseCreditNotes?${docSelect}`, 1500).catch(() => []),
+        b1sFetchAllPages<{
+          JdtNum: number;
+          ReferenceDate?: string;
+          DueDate?: string;
+          Memo?: string;
+          Reference?: string;
+          Reference2?: string;
+          BaseReference?: string;
+          JournalEntryLines?: Array<{
+            Line_ID: number;
+            AccountCode: string;
+            Debit?: number;
+            Credit?: number;
+            ShortName?: string;
+            ContraAccount?: string;
+            LineMemo?: string;
+            Reference1?: string;
             Reference2?: string;
-            BaseReference?: string;
-            JournalEntryLines?: Array<{
-              Line_ID: number;
-              AccountCode: string;
-              Debit?: number;
-              Credit?: number;
-              ShortName?: string;
-              ContraAccount?: string;
-              LineMemo?: string;
-              Reference1?: string;
-              Reference2?: string;
-            }>;
           }>;
         }>(
-          '/JournalEntries?$select=JdtNum,ReferenceDate,DueDate,Memo,Reference,Reference2,BaseReference,JournalEntryLines&$orderby=JdtNum desc&$top=60'
-        ).catch(() => ({ value: [] })),
+          '/JournalEntries?$select=JdtNum,ReferenceDate,DueDate,Memo,Reference,Reference2,BaseReference,JournalEntryLines&$orderby=JdtNum desc',
+          300
+        ).catch(() => []),
       ]);
 
       let houseBanks = state.houseBanks;
@@ -359,7 +368,11 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
         for (const r of items) {
           const total = Number(r.DocTotal ?? 0);
           const paid = Number(r.PaidToDate ?? 0);
-          const openAbs = Math.round((total - paid) * 100) / 100;
+          let openAbs = Math.round((total - paid) * 100) / 100;
+          // If DocumentStatus is 'bost_Open' in SAP B1, never silently drop the document if PaidToDate calculation is 0
+          if (openAbs <= 0.009 && total > 0.009) {
+            openAbs = Math.round(total * 100) / 100;
+          }
           if (openAbs <= 0.009) continue;
 
           const cardCode = String(r.CardCode ?? '');
@@ -448,7 +461,7 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
       };
 
       const missingBpCodes = new Set<string>();
-      for (const je of jeRes.value ?? []) {
+      for (const je of jeList) {
         for (const line of je.JournalEntryLines ?? []) {
           const code = resolveJeCardCode(je, line);
           if (code && !cachedBpByCode.has(code)) {
@@ -480,7 +493,7 @@ async function fetchLiveB1Context(state: LocalReconState, forceRefresh = false):
       }
 
       const journalByGl = new Map<string, B1UnreconciledJournalLine[]>();
-      for (const je of jeRes.value ?? []) {
+      for (const je of jeList) {
         for (const line of je.JournalEntryLines ?? []) {
           const debit = Number(line.Debit ?? 0);
           const credit = Number(line.Credit ?? 0);
@@ -721,15 +734,98 @@ export const webClientB1sAdapter = {
   async getManualCandidates(
     direction: 'CREDIT' | 'DEBIT',
     glAccountCode: string,
-    search?: string
+    search?: string,
+    forceRefresh = false
   ): Promise<{ openDocuments: B1OpenDocument[]; journalLines: B1UnreconciledJournalLine[] }> {
     const state = loadState();
-    const ctx = await fetchLiveB1Context(state);
-    const docs = direction === 'CREDIT' ? ctx.creditDocs : ctx.debitDocs;
-    const jes = ctx.journalByGl.get(glAccountCode) ?? [];
+    const ctx = await fetchLiveB1Context(state, forceRefresh);
+    let docs = [...(direction === 'CREDIT' ? ctx.creditDocs : ctx.debitDocs)];
+    const jes = [...(ctx.journalByGl.get(glAccountCode) ?? [])];
+
+    // If the user typed a search query, also query Service Layer directly so any document beyond initial pages is found
+    const q = (search ?? '').trim();
+    if (q.length >= 2) {
+      const safeQ = q.replace(/'/g, "''");
+      const numVal = /^\d+$/.test(q) ? Number(q) : null;
+      const filterClauses = [
+        `contains(NumAtCard, '${safeQ}')`,
+        `contains(CardCode, '${safeQ.toUpperCase()}')`,
+        `contains(CardName, '${safeQ}')`,
+      ];
+      if (numVal !== null) {
+        filterClauses.unshift(`DocNum eq ${numVal}`);
+      }
+      const searchFilter = `$filter=DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO' and (${filterClauses.join(
+        ' or '
+      )})&$select=DocEntry,DocNum,Series,NumAtCard,CardCode,CardName,FederalTaxID,DocDate,DocDueDate,DocCurrency,DocTotal,PaidToDate,Comments`;
+
+      const invEndpoint = direction === 'CREDIT' ? '/Invoices' : '/PurchaseInvoices';
+      const cmEndpoint = direction === 'CREDIT' ? '/CreditNotes' : '/PurchaseCreditNotes';
+      const invType: B1DocumentType = direction === 'CREDIT' ? 'AR_INVOICE' : 'AP_INVOICE';
+      const cmType: B1DocumentType = direction === 'CREDIT' ? 'AR_CREDIT_MEMO' : 'AP_CREDIT_MEMO';
+
+      const [extraInvs, extraCms, seriesMap] = await Promise.all([
+        b1sFetch<{ value?: Array<Record<string, unknown>> }>(`${invEndpoint}?${searchFilter}`).catch(() => ({
+          value: [],
+        })),
+        b1sFetch<{ value?: Array<Record<string, unknown>> }>(`${cmEndpoint}?${searchFilter}`).catch(() => ({
+          value: [],
+        })),
+        loadSeriesMapOnce(),
+      ]);
+
+      const existingKeys = new Set(docs.map((d) => `${d.docType}-${d.docEntry}`));
+      const addExtra = (items: Array<Record<string, unknown>>, dt: B1DocumentType, sign: 1 | -1) => {
+        for (const r of items) {
+          const docEntry = Number(r.DocEntry);
+          const key = `${dt}-${docEntry}`;
+          if (existingKeys.has(key)) continue;
+          const total = Number(r.DocTotal ?? 0);
+          const paid = Number(r.PaidToDate ?? 0);
+          let openAbs = Math.round((total - paid) * 100) / 100;
+          if (openAbs <= 0.009 && total > 0.009) openAbs = total;
+          if (openAbs <= 0.009) continue;
+
+          const seriesCode = r.Series != null ? Number(r.Series) : undefined;
+          const seriesName =
+            (seriesCode != null ? seriesMap.get(seriesCode) : undefined) ||
+            (seriesCode != null ? `Série ${seriesCode}` : undefined);
+          const numAtCard = r.NumAtCard ? String(r.NumAtCard).trim() : undefined;
+          const docNum = Number(r.DocNum);
+
+          const mapped: B1OpenDocument = {
+            docType: dt,
+            docEntry,
+            docNum,
+            seriesCode,
+            seriesName,
+            atDocNumber:
+              numAtCard || (seriesName && !seriesName.startsWith('Série ') ? `${seriesName}/${docNum}` : undefined),
+            cardCode: String(r.CardCode ?? ''),
+            cardName: String(r.CardName ?? ''),
+            nif: String(r.FederalTaxID ?? '').replace(/^PT/i, '').trim() || undefined,
+            bpIbans: [],
+            docDate: String(r.DocDate ?? '').slice(0, 10),
+            dueDate: String(r.DocDueDate ?? r.DocDate ?? '').slice(0, 10),
+            currency: String(r.DocCurrency ?? 'EUR'),
+            docTotal: sign * total,
+            openAmount: sign * openAbs,
+            comments: r.Comments ? String(r.Comments) : undefined,
+          };
+          docs.push(mapped);
+          existingKeys.add(key);
+          if (direction === 'CREDIT') ctx.creditDocs.push(mapped);
+          else ctx.debitDocs.push(mapped);
+        }
+      };
+
+      addExtra(extraInvs.value ?? [], invType, 1);
+      addExtra(extraCms.value ?? [], cmType, -1);
+    }
+
     return {
-      openDocuments: search ? filterManualOpenDocuments(docs, search) : docs,
-      journalLines: search ? filterManualJournalLines(jes, search) : jes,
+      openDocuments: docs,
+      journalLines: jes,
     };
   },
 

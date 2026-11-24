@@ -38,6 +38,8 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
   const [manualLoading, setManualLoading] = useState(false);
   const [manualSearch, setManualSearch] = useState<string>('');
   const [selectedSeries, setSelectedSeries] = useState<string>('ALL');
+  const [docPage, setDocPage] = useState<number>(1);
+  const [showAllDocs, setShowAllDocs] = useState<boolean>(false);
   const [openDocs, setOpenDocs] = useState<B1OpenDocument[]>([]);
   const [journalLines, setJournalLines] = useState<B1UnreconciledJournalLine[]>([]);
   const [glRules, setGlRules] = useState<GlMatchingRule[]>([]);
@@ -52,6 +54,8 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
     setError(null);
     setManualSearch('');
     setSelectedSeries('ALL');
+    setDocPage(1);
+    setShowAllDocs(false);
     setAllocatedByDocEntry({});
     setAllocatedTextByDocEntry({});
     setAllowPaymentOnAccount(false);
@@ -59,11 +63,10 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
     setMode('SUGGESTIONS');
   }, [line.id]);
 
-  useEffect(() => {
-    if (mode !== 'MANUAL') return;
+  const loadCandidates = (forceRefresh = false) => {
     setManualLoading(true);
     Promise.all([
-      api.getManualCandidates(line.direction, line.glAccountCode),
+      api.getManualCandidates(line.direction, line.glAccountCode, undefined, forceRefresh),
       api.getGlRules(),
     ])
       .then(([candRes, rulesRes]) => {
@@ -75,7 +78,29 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setManualLoading(false));
+  };
+
+  useEffect(() => {
+    if (mode !== 'MANUAL') return;
+    loadCandidates(false);
   }, [mode, line.direction, line.glAccountCode]);
+
+  // Live server-side search fallback when user types 2+ characters
+  useEffect(() => {
+    if (mode !== 'MANUAL' || manualSearch.trim().length < 2) return;
+    const timer = setTimeout(() => {
+      api
+        .getManualCandidates(line.direction, line.glAccountCode, manualSearch.trim(), false)
+        .then((res) => {
+          setOpenDocs(res.openDocuments);
+          setJournalLines(res.journalLines);
+        })
+        .catch(() => {
+          // Keep current in-memory list
+        });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [mode, manualSearch, line.direction, line.glAccountCode]);
 
   const handleApproveSuggestion = async (sug: MatchSuggestion) => {
     setBusy(true);
@@ -182,6 +207,15 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
     () => filterManualOpenDocuments(openDocs, manualSearch, selectedSeries),
     [openDocs, manualSearch, selectedSeries]
   );
+
+  const DOCS_PAGE_SIZE = 50;
+  const totalDocPages = Math.max(1, Math.ceil(filteredOpenDocs.length / DOCS_PAGE_SIZE));
+  const safeDocPage = Math.min(docPage, totalDocPages);
+  const visibleOpenDocs = useMemo(() => {
+    if (showAllDocs) return filteredOpenDocs;
+    const start = (safeDocPage - 1) * DOCS_PAGE_SIZE;
+    return filteredOpenDocs.slice(start, start + DOCS_PAGE_SIZE);
+  }, [filteredOpenDocs, safeDocPage, showAllDocs]);
 
   const filteredJournalLines = useMemo(() => {
     const directionCompatible = journalLines.filter((j) =>
@@ -605,7 +639,10 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                 <Select
                   onChange={(e) => {
                     const sr = e.detail.selectedOption?.getAttribute('data-series');
-                    if (sr) setSelectedSeries(sr);
+                    if (sr) {
+                      setSelectedSeries(sr);
+                      setDocPage(1);
+                    }
                   }}
                 >
                   <Option data-series="ALL" selected={selectedSeries === 'ALL'}>
@@ -618,16 +655,29 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                   ))}
                 </Select>
                 <Input
-                  placeholder="Pesquisar Série, Nº Doc, CardCode, CardName ou Valor (ex: 1042, C10010, 1845,00)..."
+                  placeholder="Pesquisar Série, Nº Doc, Ref Fornecedor, CardCode, CardName, NIF ou Valor..."
                   value={manualSearch}
                   style={{ flex: 1, minWidth: '220px' }}
-                  onInput={(e) => setManualSearch((e.target as unknown as { value: string }).value)}
+                  onInput={(e) => {
+                    setManualSearch((e.target as unknown as { value: string }).value);
+                    setDocPage(1);
+                  }}
                 />
                 <Button
                   design="Transparent"
-                  onClick={() => setManualSearch(line.amount.toFixed(2).replace('.', ','))}
+                  onClick={() => {
+                    setManualSearch(line.amount.toFixed(2).replace('.', ','));
+                    setDocPage(1);
+                  }}
                 >
                   Valor Exato ({formatEur(line.amount)})
+                </Button>
+                <Button
+                  design="Transparent"
+                  disabled={manualLoading}
+                  onClick={() => loadCandidates(true)}
+                >
+                  Atualizar Lista
                 </Button>
                 {(manualSearch || selectedSeries !== 'ALL') && (
                   <Button
@@ -635,6 +685,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                     onClick={() => {
                       setManualSearch('');
                       setSelectedSeries('ALL');
+                      setDocPage(1);
                     }}
                   >
                     Limpar
@@ -646,12 +697,54 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                 <BusyIndicator active size="M" />
               ) : (
                 <>
-                  <div style={{ fontWeight: 600, fontSize: '13px' }}>
-                    1. Faturas &amp; Notas de Crédito em Aberto ({line.direction === 'CREDIT' ? 'Clientes OINV/ORIN' : 'Fornecedores OPCH/ORPC'} — {filteredOpenDocs.length})
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: '13px' }}>
+                      1. Faturas &amp; Notas de Crédito em Aberto (
+                      {line.direction === 'CREDIT' ? 'Clientes OINV/ORIN' : 'Fornecedores OPCH/ORPC'} —{' '}
+                      {filteredOpenDocs.length} de {openDocs.length} total)
+                    </div>
+                    {filteredOpenDocs.length > DOCS_PAGE_SIZE && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
+                        {!showAllDocs && (
+                          <>
+                            <Button
+                              design="Transparent"
+                              disabled={safeDocPage <= 1}
+                              onClick={() => setDocPage((p) => Math.max(1, p - 1))}
+                            >
+                              ◀ Anterior
+                            </Button>
+                            <span style={{ color: '#556b82' }}>
+                              Página <strong>{safeDocPage}</strong> de <strong>{totalDocPages}</strong>
+                            </span>
+                            <Button
+                              design="Transparent"
+                              disabled={safeDocPage >= totalDocPages}
+                              onClick={() => setDocPage((p) => Math.min(totalDocPages, p + 1))}
+                            >
+                              Seguinte ▶
+                            </Button>
+                          </>
+                        )}
+                        <Button design="Transparent" onClick={() => setShowAllDocs((v) => !v)}>
+                          {showAllDocs
+                            ? `Paginar (${DOCS_PAGE_SIZE}/pág)`
+                            : `Mostrar Todos (${filteredOpenDocs.length})`}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div
                     style={{
-                      maxHeight: '210px',
+                      maxHeight: '300px',
                       overflowY: 'auto',
                       border: '1px solid #e5e5e5',
                       borderRadius: '6px',
@@ -662,7 +755,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                         Nenhum documento em aberto encontrado para &quot;{manualSearch}&quot;.
                       </div>
                     ) : (
-                      filteredOpenDocs.map((d) => {
+                      visibleOpenDocs.map((d) => {
                         const checked = allocatedByDocEntry[d.docEntry] !== undefined;
                         const isCreditMemo =
                           d.docType === 'AR_CREDIT_MEMO' || d.docType === 'AP_CREDIT_MEMO';
