@@ -10,6 +10,7 @@ import {
   MockServiceLayerClient,
   type IB1ServiceLayerClient,
 } from './b1/serviceLayerClient.js';
+import { companyDbForName, currentCompany, enterCompany } from './company/context.js';
 import { loadConfig, type AppConfig } from './config/env.js';
 import { ExtensionDatabase } from './db/database.js';
 import {
@@ -110,6 +111,39 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<{
   const scheduler = new AutoInvoiceScheduler(db, workflow);
   scheduler.refreshSchedule();
 
+  // Company of every request comes from the caller's own B1SESSION (never from configuration):
+  // the session's CompanyName is looked up in B1_COMPANIES to get the CompanyDB. Mock mode has no
+  // sessions and uses the single configured B1_COMPANY_DB.
+  const sessionCompanyCache = new Map<string, { companyDb: string; expiresAt: number }>();
+  const SESSION_COMPANY_TTL_MS = 5 * 60_000;
+
+  async function resolveCompanyFromSession(
+    cookieHeader: string | undefined
+  ): Promise<{ companyDb: string } | { status: number; error: string }> {
+    if (config.B1_MODE !== 'live') return { companyDb: config.B1_COMPANY_DB };
+
+    const sessionId = /(?:^|;\s*)B1SESSION=([^;]+)/.exec(cookieHeader ?? '')?.[1];
+    if (!sessionId) {
+      return { status: 401, error: 'Sessão SAP B1 não encontrada. Abra a extensão a partir do Web Client.' };
+    }
+    const cached = sessionCompanyCache.get(sessionId);
+    if (cached && cached.expiresAt > Date.now()) return { companyDb: cached.companyDb };
+
+    const companyName = await b1Client.getSessionCompanyName(cookieHeader);
+    if (!companyName) {
+      return { status: 401, error: 'Sessão SAP B1 inválida ou expirada.' };
+    }
+    const companyDb = companyDbForName(config, companyName);
+    if (!companyDb) {
+      return {
+        status: 403,
+        error: `A empresa "${companyName}" não está autorizada (adicione-a a B1_COMPANIES).`,
+      };
+    }
+    sessionCompanyCache.set(sessionId, { companyDb, expiresAt: Date.now() + SESSION_COMPANY_TTL_MS });
+    return { companyDb };
+  }
+
   const app = Fastify({ logger: false });
   await app.register(cors, {
     origin: config.CORS_ORIGIN === '*' ? true : [...config.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean), 'http://localhost:5174', 'http://127.0.0.1:5174'],
@@ -119,6 +153,28 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<{
 
   app.addHook('onClose', async () => {
     scheduler.stop();
+  });
+
+  app.addHook('onRequest', (req, reply, done) => {
+    const url = req.url.split('?')[0];
+    if (!url.startsWith('/api/') || url === '/api/health' || req.method === 'OPTIONS') {
+      done();
+      return;
+    }
+    resolveCompanyFromSession(req.headers.cookie).then(
+      (resolved) => {
+        if ('companyDb' in resolved) {
+          enterCompany(resolved.companyDb, done);
+        } else {
+          void reply.code(resolved.status).send({ error: resolved.error });
+        }
+      },
+      (err: unknown) => {
+        void reply
+          .code(500)
+          .send({ error: err instanceof Error ? err.message : 'Erro ao validar a empresa da sessão' });
+      }
+    );
   });
 
   app.get('/api/health', async () => ({
@@ -227,7 +283,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<{
       return reply.code(400).send({ error: 'Definições inválidas', details: parsed.error.flatten() });
     }
     const updated = db.updateSettings(parsed.data);
-    scheduler.refreshSchedule();
+    scheduler.refreshSchedule(currentCompany());
     const actor = String(req.headers['x-b1-user'] ?? 'webclient-user');
     db.addAuditLog(
       actor,

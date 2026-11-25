@@ -34,7 +34,13 @@ const EnvSchema = z.object({
 
   // SAP B1 Service Layer
   B1_SERVICE_LAYER_URL: z.string().default('https://b1.internal.example.local:50000/b1s/v1'),
+  // Legacy/default company: only used to (a) tag rows created before multi-company support and (b) as the
+  // single company in mock mode. In live mode the company always comes from the user's session.
   B1_COMPANY_DB: z.string().default('SBO_COMPANY_PT'),
+  // Company that owns data created before multi-company support (defaults to B1_COMPANY_DB).
+  B1_LEGACY_COMPANY_DB: z.string().default(''),
+  // JSON map {"<CompanyName from session>":"<CompanyDB>"}; sessions of unmapped companies are rejected.
+  B1_COMPANIES: z.string().default('{}'),
   B1_REJECT_UNAUTHORIZED_TLS: boolFromEnv.default(true),
   B1_TECH_USER: z.string().default(''),
   B1_TECH_PASSWORD: z.string().default(''),

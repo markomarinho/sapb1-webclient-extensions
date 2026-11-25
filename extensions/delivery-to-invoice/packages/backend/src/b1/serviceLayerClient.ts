@@ -1,3 +1,4 @@
+import { currentCompany } from '../company/context.js';
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
@@ -23,6 +24,8 @@ export interface CreatedInvoiceResult {
 }
 
 export interface IB1ServiceLayerClient {
+  /** CompanyName of the company the caller's own B1SESSION is logged into (null if no/invalid session). */
+  getSessionCompanyName(cookieHeader?: string): Promise<string | null>;
   listOpenDeliveries(cookieHeader?: string): Promise<OpenDeliveryNote[]>;
   getCustomerEmails(cardCode: string, cookieHeader?: string): Promise<CustomerEmailOption[]>;
   createInvoiceFromDeliveries(
@@ -439,6 +442,10 @@ export class MockServiceLayerClient implements IB1ServiceLayerClient {
     return this.invoices.get(docEntry) ?? null;
   }
 
+  async getSessionCompanyName(): Promise<string | null> {
+    return null;
+  }
+
   async testConnection() {
     return {
       ok: true,
@@ -499,17 +506,35 @@ function executeNodeHttpRequest(
 }
 
 export class LiveServiceLayerClient implements IB1ServiceLayerClient {
-  private cachedCookie: string | null = null;
-  private cachedCookieExpiresAt = 0;
+  /** Technical-user sessions (scheduler only), one per company. */
+  private cachedCookies = new Map<string, { cookie: string; expiresAt: number }>();
 
   constructor(private readonly config: AppConfig) {}
+
+  public async getSessionCompanyName(cookieHeader?: string): Promise<string | null> {
+    if (!cookieHeader || !cookieHeader.includes('B1SESSION=')) return null;
+    try {
+      const info = await this.requestJson<{ CompanyName?: string }>(
+        'POST',
+        '/CompanyService_GetCompanyInfo',
+        cookieHeader,
+        {}
+      );
+      const name = String(info.CompanyName ?? '').trim();
+      return name || null;
+    } catch {
+      return null;
+    }
+  }
 
   private async resolveCookie(cookieHeader?: string): Promise<string> {
     if (cookieHeader && cookieHeader.includes('B1SESSION=')) {
       return cookieHeader;
     }
-    if (this.cachedCookie && Date.now() < this.cachedCookieExpiresAt) {
-      return this.cachedCookie;
+    const company = currentCompany();
+    const cached = this.cachedCookies.get(company);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.cookie;
     }
     if (!this.config.B1_TECH_USER || !this.config.B1_TECH_PASSWORD) {
       throw new Error(
@@ -522,7 +547,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        CompanyDB: this.config.B1_COMPANY_DB,
+        CompanyDB: company,
         UserName: this.config.B1_TECH_USER,
         Password: this.config.B1_TECH_PASSWORD,
       }),
@@ -535,8 +560,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
 
     const setCookies = res.headers['set-cookie'] ?? [];
     const cookieStr = setCookies.map((c) => c.split(';')[0]).join('; ');
-    this.cachedCookie = cookieStr;
-    this.cachedCookieExpiresAt = Date.now() + 20 * 60_000;
+    this.cachedCookies.set(company, { cookie: cookieStr, expiresAt: Date.now() + 20 * 60_000 });
     return cookieStr;
   }
 
@@ -902,14 +926,14 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
       return {
         ok: true,
         latencyMs: Date.now() - start,
-        companyDb: this.config.B1_COMPANY_DB,
+        companyDb: currentCompany(),
         message: 'Ligação ao SAP B1 Service Layer operacional.',
       };
     } catch (err) {
       return {
         ok: false,
         latencyMs: Date.now() - start,
-        companyDb: this.config.B1_COMPANY_DB,
+        companyDb: currentCompany(),
         message: err instanceof Error ? err.message : 'Erro ao contactar Service Layer.',
       };
     }

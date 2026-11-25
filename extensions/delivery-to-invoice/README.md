@@ -40,6 +40,14 @@ Open `http://localhost:5174`. In mock mode (`B1_MODE=mock`, `EMAIL_MODE=mock`), 
    ```bash
    npm run build:mtar -w extensions/delivery-to-invoice
    ```
+   **Multi-company:** in backend mode the company is taken from the caller's own SAP B1 session (`B1SESSION`
+   cookie → `CompanyService_GetCompanyInfo` → `CompanyName`), never from configuration. List the allowed companies in
+   `B1_COMPANIES` (`{"<CompanyName>":"<CompanyDB>"}`; the CompanyDB is needed for the API Gateway PDF login). Settings,
+   history, emails, audit log and the processed-deliveries lock are stored per company, and the scheduler runs one timer
+   per company using the technical user (`B1_TECH_USER`) logged into that company. Existing single-company data is
+   assigned to `B1_COMPANY_DB` on first start. This requires the backend to receive the Web Client's cookies, i.e. serve
+   it on the Web Client's origin (see `proxy/`).
+
    **Web Client mode (default, no backend needed):** inside the Web Client the extension calls the same-origin Service Layer (`/b1s/v1`) with the user's own session, so it works under the Web Client's CSP. It lists open delivery notes, validates them and creates the A/R invoices. Settings, history and the audit log are kept in the browser's `localStorage`. Email sending, PDF generation and the scheduler are **not available** in this mode.
 
    **Backend mode (email + scheduler):** open the extension once with `?apiUrl=https://<backend-host>:4020` (persisted in `localStorage`; an empty `?apiUrl=` switches back to Web Client mode) and add the Web Client origin to `CORS_ORIGIN`. The Web Client's CSP must allow that host in `connect-src`, so serve the backend over HTTPS behind the same host/reverse proxy if the browser blocks it.

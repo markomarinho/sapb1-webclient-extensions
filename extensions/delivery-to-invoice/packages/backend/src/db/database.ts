@@ -12,6 +12,9 @@ import type {
   TriggerSource,
 } from '@b1-d2i/shared';
 import type { AppConfig } from '../config/env.js';
+import { currentCompany } from '../company/context.js';
+
+const COMPANY_SETTINGS_COLUMNS = 'scheduler_enabled, interval_minutes, grouping_mode, only_auto_invoice_customers, min_delivery_age_days, send_email_automatically, default_eml_grp_code, check_price_match_last_invoice, check_minimum_margin, minimum_margin_percent, email_subject_template, email_body_template, email_body_is_html, cc_addresses, reply_to_address, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_password, smtp_from, pdf_source, gateway_url, invoice_doc_code, gateway_fallback_builtin, last_run_at, next_run_at';
 
 export interface SaveConversionInput {
   id: string;
@@ -39,8 +42,14 @@ export interface SaveConversionInput {
 
 export class ExtensionDatabase {
   public readonly db: DatabaseSync;
+  /** Company that owns rows created before multi-company support (single-tenant installs). */
+  private readonly legacyCompanyDb: string;
+  private readonly config?: Partial<AppConfig>;
 
   constructor(dbFilePath: string, config?: Partial<AppConfig>) {
+    this.config = config;
+    this.legacyCompanyDb =
+      config?.B1_LEGACY_COMPANY_DB || config?.B1_COMPANY_DB || 'SBO_COMPANY_PT';
     if (dbFilePath !== ':memory:') {
       fs.mkdirSync(path.dirname(dbFilePath), { recursive: true });
     }
@@ -48,13 +57,12 @@ export class ExtensionDatabase {
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec('PRAGMA foreign_keys = ON;');
     this.initSchema();
-    this.ensureDefaultSettings(config);
   }
 
   private initSchema(): void {
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS settings (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+      CREATE TABLE IF NOT EXISTS company_settings (
+        company_db TEXT PRIMARY KEY,
         scheduler_enabled INTEGER NOT NULL DEFAULT 0,
         interval_minutes INTEGER NOT NULL DEFAULT 60,
         grouping_mode TEXT NOT NULL DEFAULT 'PER_DELIVERY',
@@ -86,6 +94,7 @@ export class ExtensionDatabase {
 
       CREATE TABLE IF NOT EXISTS conversion_records (
         id TEXT PRIMARY KEY,
+        company_db TEXT NOT NULL DEFAULT '',
         run_id TEXT NOT NULL,
         trigger_source TEXT NOT NULL,
         grouping_mode TEXT NOT NULL,
@@ -109,15 +118,18 @@ export class ExtensionDatabase {
       );
 
       CREATE TABLE IF NOT EXISTS processed_deliveries (
-        delivery_doc_entry INTEGER PRIMARY KEY,
+        company_db TEXT NOT NULL DEFAULT '',
+        delivery_doc_entry INTEGER NOT NULL,
         conversion_id TEXT NOT NULL REFERENCES conversion_records(id),
         invoice_doc_entry INTEGER NOT NULL,
         invoice_doc_num INTEGER NOT NULL,
-        processed_at TEXT NOT NULL
+        processed_at TEXT NOT NULL,
+        PRIMARY KEY (company_db, delivery_doc_entry)
       );
 
       CREATE TABLE IF NOT EXISTS sent_emails (
         id TEXT PRIMARY KEY,
+        company_db TEXT NOT NULL DEFAULT '',
         conversion_id TEXT NOT NULL REFERENCES conversion_records(id),
         recipient_to TEXT NOT NULL,
         recipient_name TEXT NOT NULL DEFAULT '',
@@ -131,6 +143,7 @@ export class ExtensionDatabase {
 
       CREATE TABLE IF NOT EXISTS audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_db TEXT NOT NULL DEFAULT '',
         timestamp TEXT NOT NULL,
         actor TEXT NOT NULL,
         action TEXT NOT NULL,
@@ -139,6 +152,31 @@ export class ExtensionDatabase {
     `);
 
     // Forward-compatible column migrations for existing local SQLite databases
+    this.migrateLegacySettings();
+
+    const convCols = new Set(
+      (this.db.prepare('PRAGMA table_info(conversion_records)').all() as Array<{ name: string }>).map(
+        (c) => c.name
+      )
+    );
+    if (!convCols.has('recipient_name')) {
+      this.db.exec('ALTER TABLE conversion_records ADD COLUMN recipient_name TEXT;');
+    }
+
+    const emailCols = new Set(
+      (this.db.prepare('PRAGMA table_info(sent_emails)').all() as Array<{ name: string }>).map(
+        (c) => c.name
+      )
+    );
+    if (!emailCols.has('recipient_name')) {
+      this.db.exec("ALTER TABLE sent_emails ADD COLUMN recipient_name TEXT NOT NULL DEFAULT '';");
+    }
+
+    this.migrateToMultiCompany();
+  }
+
+  /** Brings a pre-multi-company `settings` table (singleton row) up to the latest columns. */
+  private legacySettingsAlters(): void {
     const settingsCols = new Set(
       (this.db.prepare('PRAGMA table_info(settings)').all() as Array<{ name: string }>).map(
         (c) => c.name
@@ -185,28 +223,73 @@ export class ExtensionDatabase {
         'ALTER TABLE settings ADD COLUMN minimum_margin_percent REAL NOT NULL DEFAULT 30;'
       );
     }
+  }
 
-    const convCols = new Set(
-      (this.db.prepare('PRAGMA table_info(conversion_records)').all() as Array<{ name: string }>).map(
-        (c) => c.name
-      )
+  private tableColumns(table: string): Set<string> {
+    return new Set(
+      (this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name)
     );
-    if (!convCols.has('recipient_name')) {
-      this.db.exec('ALTER TABLE conversion_records ADD COLUMN recipient_name TEXT;');
+  }
+
+  private migrateLegacySettings(): void {
+    const legacy = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'settings'")
+      .get();
+    if (!legacy) return;
+    this.legacySettingsAlters();
+    const already = this.db.prepare('SELECT COUNT(*) AS c FROM company_settings').get() as { c: number };
+    if (Number(already.c) > 0) return;
+    const cols = COMPANY_SETTINGS_COLUMNS;
+    this.db
+      .prepare(
+        `INSERT INTO company_settings (company_db, ${cols}) SELECT ?, ${cols} FROM settings WHERE id = 1`
+      )
+      .run(this.legacyCompanyDb);
+  }
+
+  /** Tags pre-existing rows with the legacy company and makes processed_deliveries unique per company. */
+  private migrateToMultiCompany(): void {
+    for (const table of ['conversion_records', 'sent_emails', 'audit_logs']) {
+      if (!this.tableColumns(table).has('company_db')) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN company_db TEXT NOT NULL DEFAULT '';`);
+      }
+      this.db.prepare(`UPDATE ${table} SET company_db = ? WHERE company_db = ''`).run(this.legacyCompanyDb);
+      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_company ON ${table}(company_db);`);
     }
 
-    const emailCols = new Set(
-      (this.db.prepare('PRAGMA table_info(sent_emails)').all() as Array<{ name: string }>).map(
-        (c) => c.name
-      )
-    );
-    if (!emailCols.has('recipient_name')) {
-      this.db.exec("ALTER TABLE sent_emails ADD COLUMN recipient_name TEXT NOT NULL DEFAULT '';");
+    if (!this.tableColumns('processed_deliveries').has('company_db')) {
+      // Old primary key was delivery_doc_entry alone: DocEntry values collide across companies.
+      this.db.exec('PRAGMA foreign_keys = OFF;');
+      this.db.exec(`
+        ALTER TABLE processed_deliveries RENAME TO processed_deliveries_old;
+        CREATE TABLE processed_deliveries (
+          company_db TEXT NOT NULL DEFAULT '',
+          delivery_doc_entry INTEGER NOT NULL,
+          conversion_id TEXT NOT NULL REFERENCES conversion_records(id),
+          invoice_doc_entry INTEGER NOT NULL,
+          invoice_doc_num INTEGER NOT NULL,
+          processed_at TEXT NOT NULL,
+          PRIMARY KEY (company_db, delivery_doc_entry)
+        );
+      `);
+      this.db
+        .prepare(
+          `INSERT INTO processed_deliveries
+             (company_db, delivery_doc_entry, conversion_id, invoice_doc_entry, invoice_doc_num, processed_at)
+           SELECT ?, delivery_doc_entry, conversion_id, invoice_doc_entry, invoice_doc_num, processed_at
+           FROM processed_deliveries_old`
+        )
+        .run(this.legacyCompanyDb);
+      this.db.exec('DROP TABLE processed_deliveries_old; PRAGMA foreign_keys = ON;');
     }
   }
 
-  private ensureDefaultSettings(config?: Partial<AppConfig>): void {
-    const row = this.db.prepare('SELECT id FROM settings WHERE id = 1').get();
+  /** Creates the default settings row for a company the first time it is seen. */
+  private ensureSettings(companyDb: string): void {
+    const config = this.config;
+    const row = this.db
+      .prepare('SELECT company_db FROM company_settings WHERE company_db = ?')
+      .get(companyDb);
     if (row) return;
 
     const defaultSubject = 'Fatura {{InvoiceDocNum}} — {{CardName}}';
@@ -223,16 +306,17 @@ export class ExtensionDatabase {
 
     this.db
       .prepare(
-        `INSERT INTO settings (
-          id, scheduler_enabled, interval_minutes, grouping_mode,
+        `INSERT INTO company_settings (
+          company_db, scheduler_enabled, interval_minutes, grouping_mode,
           only_auto_invoice_customers, min_delivery_age_days, send_email_automatically,
           default_eml_grp_code,
           email_subject_template, email_body_template, cc_addresses, reply_to_address,
           smtp_host, smtp_port, smtp_secure, smtp_user, smtp_password, smtp_from,
           pdf_source, gateway_url, invoice_doc_code, gateway_fallback_builtin
-        ) VALUES (1, 0, 60, 'PER_DELIVERY', 1, 0, 1, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, 0, 60, 'PER_DELIVERY', 1, 0, 1, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
+        companyDb,
         config?.B1_DEFAULT_EML_GRP_CODE ?? '',
         defaultSubject,
         defaultBody,
@@ -250,10 +334,11 @@ export class ExtensionDatabase {
   }
 
   public getSettings(): AutomationSettings {
-    const row = this.db.prepare('SELECT * FROM settings WHERE id = 1').get() as Record<
-      string,
-      unknown
-    >;
+    const company = currentCompany();
+    this.ensureSettings(company);
+    const row = this.db
+      .prepare('SELECT * FROM company_settings WHERE company_db = ?')
+      .get(company) as Record<string, unknown>;
     return {
       schedulerEnabled: Boolean(row.scheduler_enabled),
       intervalMinutes: Number(row.interval_minutes),
@@ -291,9 +376,9 @@ export class ExtensionDatabase {
   }
 
   public getSmtpPassword(): string {
-    const row = this.db.prepare('SELECT smtp_password FROM settings WHERE id = 1').get() as
-      | { smtp_password?: string }
-      | undefined;
+    const row = this.db
+      .prepare('SELECT smtp_password FROM company_settings WHERE company_db = ?')
+      .get(currentCompany()) as { smtp_password?: string } | undefined;
     return row?.smtp_password ?? '';
   }
 
@@ -306,7 +391,7 @@ export class ExtensionDatabase {
 
     this.db
       .prepare(
-        `UPDATE settings SET
+        `UPDATE company_settings SET
           scheduler_enabled = ?,
           interval_minutes = ?,
           grouping_mode = ?,
@@ -332,7 +417,7 @@ export class ExtensionDatabase {
           gateway_url = ?,
           invoice_doc_code = ?,
           gateway_fallback_builtin = ?
-        WHERE id = 1`
+        WHERE company_db = ?`
       )
       .run(
         (patch.schedulerEnabled ?? current.schedulerEnabled) ? 1 : 0,
@@ -359,7 +444,8 @@ export class ExtensionDatabase {
         patch.pdfSource ?? current.pdfSource,
         patch.gatewayUrl ?? current.gatewayUrl,
         patch.invoiceDocCode ?? current.invoiceDocCode,
-        (patch.gatewayFallbackToBuiltin ?? current.gatewayFallbackToBuiltin) ? 1 : 0
+        (patch.gatewayFallbackToBuiltin ?? current.gatewayFallbackToBuiltin) ? 1 : 0,
+        currentCompany()
       );
 
     return this.getSettings();
@@ -367,21 +453,33 @@ export class ExtensionDatabase {
 
   public updateSchedulerTimestamps(lastRunAt: string | null, nextRunAt: string | null): void {
     this.db
-      .prepare('UPDATE settings SET last_run_at = COALESCE(?, last_run_at), next_run_at = ? WHERE id = 1')
-      .run(lastRunAt, nextRunAt);
+      .prepare(
+        'UPDATE company_settings SET last_run_at = COALESCE(?, last_run_at), next_run_at = ? WHERE company_db = ?'
+      )
+      .run(lastRunAt, nextRunAt, currentCompany());
+  }
+
+  /** Companies that have the scheduler enabled (used to start one timer per company). */
+  public listSchedulerCompanies(): string[] {
+    const rows = this.db
+      .prepare('SELECT company_db FROM company_settings WHERE scheduler_enabled = 1')
+      .all() as Array<{ company_db: string }>;
+    return rows.map((r) => String(r.company_db));
   }
 
   public isDeliveryProcessed(docEntry: number): boolean {
     const row = this.db
-      .prepare('SELECT delivery_doc_entry FROM processed_deliveries WHERE delivery_doc_entry = ?')
-      .get(docEntry);
+      .prepare(
+        'SELECT delivery_doc_entry FROM processed_deliveries WHERE company_db = ? AND delivery_doc_entry = ?'
+      )
+      .get(currentCompany(), docEntry);
     return Boolean(row);
   }
 
   public getProcessedDeliveryEntries(): Set<number> {
     const rows = this.db
-      .prepare('SELECT delivery_doc_entry FROM processed_deliveries')
-      .all() as Array<{ delivery_doc_entry: number }>;
+      .prepare('SELECT delivery_doc_entry FROM processed_deliveries WHERE company_db = ?')
+      .all(currentCompany()) as Array<{ delivery_doc_entry: number }>;
     return new Set(rows.map((r) => Number(r.delivery_doc_entry)));
   }
 
@@ -389,15 +487,16 @@ export class ExtensionDatabase {
     this.db
       .prepare(
         `INSERT INTO conversion_records (
-          id, run_id, trigger_source, grouping_mode, card_code, card_name,
+          id, company_db, run_id, trigger_source, grouping_mode, card_code, card_name,
           delivery_doc_entries_json, delivery_doc_nums_json,
           invoice_doc_entry, invoice_doc_num, invoice_date,
           currency, total_amount, recipient_email, recipient_name, email_subject, email_sent_at,
           status, error_message, created_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         rec.id,
+        currentCompany(),
         rec.runId,
         rec.triggerSource,
         rec.groupingMode,
@@ -423,11 +522,11 @@ export class ExtensionDatabase {
     if (rec.invoiceDocEntry !== null && rec.invoiceDocNum !== null) {
       const stmt = this.db.prepare(
         `INSERT OR IGNORE INTO processed_deliveries (
-          delivery_doc_entry, conversion_id, invoice_doc_entry, invoice_doc_num, processed_at
-        ) VALUES (?, ?, ?, ?, ?)`
+          company_db, delivery_doc_entry, conversion_id, invoice_doc_entry, invoice_doc_num, processed_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`
       );
       for (const entry of rec.deliveryDocEntries) {
-        stmt.run(entry, rec.id, rec.invoiceDocEntry, rec.invoiceDocNum, rec.createdAt);
+        stmt.run(currentCompany(), entry, rec.id, rec.invoiceDocEntry, rec.invoiceDocNum, rec.createdAt);
       }
     }
   }
@@ -452,7 +551,7 @@ export class ExtensionDatabase {
           email_subject = COALESCE(?, email_subject),
           email_sent_at = COALESCE(?, email_sent_at),
           error_message = ?
-        WHERE id = ?`
+        WHERE id = ? AND company_db = ?`
       )
       .run(
         patch.status,
@@ -461,21 +560,22 @@ export class ExtensionDatabase {
         patch.emailSubject ?? null,
         patch.emailSentAt ?? null,
         patch.errorMessage ?? null,
-        id
+        id,
+        currentCompany()
       );
   }
 
   public getConversionById(id: string): ConversionRecord | null {
     const row = this.db
-      .prepare('SELECT * FROM conversion_records WHERE id = ?')
-      .get(id) as Record<string, unknown> | undefined;
+      .prepare('SELECT * FROM conversion_records WHERE id = ? AND company_db = ?')
+      .get(id, currentCompany()) as Record<string, unknown> | undefined;
     return row ? this.mapConversionRow(row) : null;
   }
 
   public listConversions(limit = 100): ConversionRecord[] {
     const rows = this.db
-      .prepare('SELECT * FROM conversion_records ORDER BY created_at DESC LIMIT ?')
-      .all(limit) as Array<Record<string, unknown>>;
+      .prepare('SELECT * FROM conversion_records WHERE company_db = ? ORDER BY created_at DESC LIMIT ?')
+      .all(currentCompany(), limit) as Array<Record<string, unknown>>;
     return rows.map((r) => this.mapConversionRow(r));
   }
 
@@ -509,12 +609,13 @@ export class ExtensionDatabase {
     this.db
       .prepare(
         `INSERT INTO sent_emails (
-          id, conversion_id, recipient_to, recipient_name, recipient_cc, subject,
+          id, company_db, conversion_id, recipient_to, recipient_name, recipient_cc, subject,
           html_body, attachment_filename, attachment_bytes, sent_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         email.id,
+        currentCompany(),
         email.conversionId,
         email.to,
         email.recipientName ?? '',
@@ -529,8 +630,8 @@ export class ExtensionDatabase {
 
   public listSentEmails(limit = 100): SentEmailPreview[] {
     const rows = this.db
-      .prepare('SELECT * FROM sent_emails ORDER BY sent_at DESC LIMIT ?')
-      .all(limit) as Array<Record<string, unknown>>;
+      .prepare('SELECT * FROM sent_emails WHERE company_db = ? ORDER BY sent_at DESC LIMIT ?')
+      .all(currentCompany(), limit) as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       id: String(r.id),
       conversionId: String(r.conversion_id),
@@ -547,14 +648,18 @@ export class ExtensionDatabase {
 
   public addAuditLog(actor: string, action: string, details: string): void {
     this.db
-      .prepare('INSERT INTO audit_logs (timestamp, actor, action, details) VALUES (?, ?, ?, ?)')
-      .run(new Date().toISOString(), actor, action, details);
+      .prepare(
+        'INSERT INTO audit_logs (company_db, timestamp, actor, action, details) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(currentCompany(), new Date().toISOString(), actor, action, details);
   }
 
   public listAuditLogs(limit = 100): AuditLogRecord[] {
     const rows = this.db
-      .prepare('SELECT id, timestamp, actor, action, details FROM audit_logs ORDER BY id DESC LIMIT ?')
-      .all(limit) as Array<Record<string, unknown>>;
+      .prepare(
+        'SELECT id, timestamp, actor, action, details FROM audit_logs WHERE company_db = ? ORDER BY id DESC LIMIT ?'
+      )
+      .all(currentCompany(), limit) as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       id: Number(r.id),
       timestamp: String(r.timestamp),
@@ -569,24 +674,25 @@ export class ExtensionDatabase {
     emailsSentCount: number;
     emailFailedCount: number;
   } {
+    const company = currentCompany();
     const todayPrefix = new Date().toISOString().slice(0, 10);
     const invoicedToday = this.db
       .prepare(
-        "SELECT COUNT(*) as cnt FROM conversion_records WHERE invoice_doc_entry IS NOT NULL AND created_at LIKE ?"
+        "SELECT COUNT(*) as cnt FROM conversion_records WHERE company_db = ? AND invoice_doc_entry IS NOT NULL AND created_at LIKE ?"
       )
-      .get(`${todayPrefix}%`) as { cnt: number };
+      .get(company, `${todayPrefix}%`) as { cnt: number };
 
     const emailsSent = this.db
       .prepare(
-        "SELECT COUNT(*) as cnt FROM conversion_records WHERE status = 'INVOICED_AND_EMAILED'"
+        "SELECT COUNT(*) as cnt FROM conversion_records WHERE company_db = ? AND status = 'INVOICED_AND_EMAILED'"
       )
-      .get() as { cnt: number };
+      .get(company) as { cnt: number };
 
     const emailFailed = this.db
       .prepare(
-        "SELECT COUNT(*) as cnt FROM conversion_records WHERE status IN ('INVOICED_EMAIL_FAILED', 'INVOICED_NO_EMAIL', 'FAILED')"
+        "SELECT COUNT(*) as cnt FROM conversion_records WHERE company_db = ? AND status IN ('INVOICED_EMAIL_FAILED', 'INVOICED_NO_EMAIL', 'FAILED')"
       )
-      .get() as { cnt: number };
+      .get(company) as { cnt: number };
 
     return {
       invoicedTodayCount: Number(invoicedToday?.cnt ?? 0),

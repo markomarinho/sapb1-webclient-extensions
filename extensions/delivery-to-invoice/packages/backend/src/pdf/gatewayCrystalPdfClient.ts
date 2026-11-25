@@ -1,3 +1,4 @@
+import { currentCompany } from '../company/context.js';
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
@@ -76,9 +77,8 @@ function sendHttpRequest(
  * Reporting Service (`POST /login` -> `POST /rs/v1/ExportPDFData?DocCode=<DocCode>`).
  */
 export class GatewayCrystalPdfClient implements IGatewayCrystalPdfClient {
-  private cachedCookie: string | null = null;
-  private cachedCookieBaseUrl: string | null = null;
-  private cachedCookieExpiresAt = 0;
+  /** Gateway sessions per company + gateway URL. */
+  private cachedCookies = new Map<string, { cookie: string; expiresAt: number }>();
 
   constructor(private readonly config: AppConfig) {}
 
@@ -93,13 +93,11 @@ export class GatewayCrystalPdfClient implements IGatewayCrystalPdfClient {
   }
 
   private async login(baseUrl: string, forceRefresh = false): Promise<string> {
-    if (
-      !forceRefresh &&
-      this.cachedCookie &&
-      this.cachedCookieBaseUrl === baseUrl &&
-      Date.now() < this.cachedCookieExpiresAt
-    ) {
-      return this.cachedCookie;
+    const company = currentCompany();
+    const cacheKey = `${company}@${baseUrl}`;
+    const cached = this.cachedCookies.get(cacheKey);
+    if (!forceRefresh && cached && Date.now() < cached.expiresAt) {
+      return cached.cookie;
     }
 
     if (!this.config.B1_TECH_USER || !this.config.B1_TECH_PASSWORD) {
@@ -109,7 +107,7 @@ export class GatewayCrystalPdfClient implements IGatewayCrystalPdfClient {
     }
 
     const payload: Record<string, string> = {
-      CompanyDB: this.config.B1_COMPANY_DB,
+      CompanyDB: company,
       UserName: this.config.B1_TECH_USER,
       Password: this.config.B1_TECH_PASSWORD,
     };
@@ -139,9 +137,7 @@ export class GatewayCrystalPdfClient implements IGatewayCrystalPdfClient {
       );
     }
 
-    this.cachedCookie = cookieHeader;
-    this.cachedCookieBaseUrl = baseUrl;
-    this.cachedCookieExpiresAt = Date.now() + 15 * 60_000;
+    this.cachedCookies.set(cacheKey, { cookie: cookieHeader, expiresAt: Date.now() + 15 * 60_000 });
     return cookieHeader;
   }
 
