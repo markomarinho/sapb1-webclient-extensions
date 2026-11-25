@@ -40,6 +40,7 @@ const EnvSchema = z.object({
   B1_TECH_PASSWORD: z.string().default(''),
   B1_BP_AUTO_INVOICE_UDF: z.string().default('U_AutoInvoice'),
   B1_BP_INVOICE_EMAIL_UDF: z.string().default(''),
+  B1_DEFAULT_EML_GRP_CODE: z.string().default(''),
 
   // SAP B1 API Gateway (Crystal Reports PDF Export: POST /rs/v1/ExportPDFData)
   PDF_SOURCE: z.enum(['builtin', 'gateway']).default('builtin'),

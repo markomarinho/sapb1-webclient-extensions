@@ -34,8 +34,17 @@ describe('Delivery-to-Invoice Conversion & Email Workflow', () => {
     assert.equal(body.failedCount, 0);
     assert.equal(mockEmail.sentLog.length, 2);
     assert.equal(mockEmail.sentLog[0].to, 'faturacao@deltacomercio.pt');
-    // Delivery 503 has empty primary email -> falls back to contactEmail
+    // Delivery 501 uses Main email -> greeting uses Customer name without contact person
+    assert.match(
+      mockEmail.sentLog[0].textBody,
+      /Exmo\.\(a\) Cliente Delta Comércio & Distribuição, Lda\.,/
+    );
+    // Delivery 503 has empty primary email -> falls back to contactEmail (Sofia Almeida) and puts contact name in email
     assert.equal(mockEmail.sentLog[1].to, 'contas.pagar@techlusitana.pt');
+    assert.match(
+      mockEmail.sentLog[1].textBody,
+      /Exmo\.\(a\) Sofia Almeida \(TechLusitana Sistemas, S\.A\.\),/
+    );
     assert.ok(mockEmail.sentLog[0].attachmentBuffer.toString('utf8').startsWith('%PDF-1.4'));
 
     // Re-running with the same deliveries must be idempotent (0 new invoices)
@@ -268,5 +277,255 @@ describe('Delivery-to-Invoice Conversion & Email Workflow', () => {
     } finally {
       await new Promise<void>((resolve) => gatewayServer.close(() => resolve()));
     }
+  });
+
+  it('allows selecting other customer master data emails (main vs contacts) and puts contact name in the email', async () => {
+    const { app, emailService } = await buildApp({ dbPath: ':memory:' });
+    const mockEmail = emailService as MockEmailService;
+
+    // 1. Verify customer master data emails endpoint lists main + contacts with contactName
+    const emailsRes = await app.inject({
+      method: 'GET',
+      url: '/api/customers/C20001/emails',
+    });
+    assert.equal(emailsRes.statusCode, 200);
+    const { emails } = emailsRes.json();
+    assert.equal(emails.length, 3);
+    assert.equal(emails[0].source, 'MAIN');
+    assert.equal(emails[0].email, 'faturacao@deltacomercio.pt');
+    assert.equal(emails[1].source, 'CONTACT');
+    assert.equal(emails[1].email, 'financeiro@deltacomercio.pt');
+    assert.equal(emails[1].contactName, 'Ana Martins');
+    assert.equal(emails[2].source, 'CONTACT');
+    assert.equal(emails[2].email, 'logistica@deltacomercio.pt');
+    assert.equal(emails[2].contactName, 'Carlos Ferreira');
+
+    // 2. Convert delivery 501 selecting contact "Carlos Ferreira" instead of main email
+    const convertRes = await app.inject({
+      method: 'POST',
+      url: '/api/deliveries/convert',
+      payload: {
+        deliveryDocEntries: [501],
+        groupingMode: 'PER_DELIVERY',
+        sendEmail: true,
+        recipientOverrides: {
+          '501': {
+            email: 'logistica@deltacomercio.pt',
+            contactName: 'Carlos Ferreira',
+            source: 'CONTACT',
+          },
+        },
+      },
+    });
+    assert.equal(convertRes.statusCode, 200);
+    const body = convertRes.json();
+    assert.equal(body.records[0].recipientEmail, 'logistica@deltacomercio.pt');
+    assert.equal(body.records[0].recipientName, 'Carlos Ferreira');
+    assert.equal(mockEmail.sentLog.length, 1);
+    assert.equal(mockEmail.sentLog[0].to, 'logistica@deltacomercio.pt');
+    assert.match(
+      mockEmail.sentLog[0].textBody,
+      /Exmo\.\(a\) Carlos Ferreira \(Delta Comércio & Distribuição, Lda\.\),/
+    );
+
+    // 3. Re-send / retry email selecting another contact ("Ana Martins") and verify contact name is used
+    const conversionId = body.records[0].id;
+    const retryContactRes = await app.inject({
+      method: 'POST',
+      url: `/api/conversions/${conversionId}/retry-email`,
+      payload: {
+        recipientEmail: 'financeiro@deltacomercio.pt',
+      },
+    });
+    assert.equal(retryContactRes.statusCode, 200);
+    assert.equal(retryContactRes.json().conversion.recipientEmail, 'financeiro@deltacomercio.pt');
+    assert.equal(retryContactRes.json().conversion.recipientName, 'Ana Martins');
+    assert.equal(mockEmail.sentLog.length, 2);
+    assert.equal(mockEmail.sentLog[1].to, 'financeiro@deltacomercio.pt');
+    assert.match(
+      mockEmail.sentLog[1].textBody,
+      /Exmo\.\(a\) Ana Martins \(Delta Comércio & Distribuição, Lda\.\),/
+    );
+
+    // 4. Re-send / retry email switching back to MAIN email -> uses Customer name without contact name
+    const retryMainRes = await app.inject({
+      method: 'POST',
+      url: `/api/conversions/${conversionId}/retry-email`,
+      payload: {
+        recipientEmail: 'faturacao@deltacomercio.pt',
+      },
+    });
+    assert.equal(retryMainRes.statusCode, 200);
+    assert.equal(retryMainRes.json().conversion.recipientEmail, 'faturacao@deltacomercio.pt');
+    assert.equal(retryMainRes.json().conversion.recipientName, null);
+    assert.equal(mockEmail.sentLog.length, 3);
+    assert.match(
+      mockEmail.sentLog[2].textBody,
+      /Exmo\.\(a\) Cliente Delta Comércio & Distribuição, Lda\.,/
+    );
+
+    await app.close();
+  });
+
+  it('uses defaultEmlGrpCode from settings as the default contact selection', async () => {
+    const { app, emailService } = await buildApp({ dbPath: ':memory:' });
+    const mockEmail = emailService as MockEmailService;
+
+    // Update settings to use EmlGrpCode = 'FATURACAO' as default contact selection
+    const settingsRes = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: {
+        defaultEmlGrpCode: 'FATURACAO',
+      },
+    });
+    assert.equal(settingsRes.statusCode, 200);
+    assert.equal(settingsRes.json().settings.defaultEmlGrpCode, 'FATURACAO');
+
+    // Verify customer C20001 email options now mark Ana Martins (emlGrpCode=FATURACAO) as isDefault=true
+    const emailsRes = await app.inject({
+      method: 'GET',
+      url: '/api/customers/C20001/emails',
+    });
+    assert.equal(emailsRes.statusCode, 200);
+    const { emails } = emailsRes.json();
+    const defaultOpt = emails.find((e: { isDefault?: boolean }) => e.isDefault);
+    assert.ok(defaultOpt);
+    assert.equal(defaultOpt.email, 'financeiro@deltacomercio.pt');
+    assert.equal(defaultOpt.contactName, 'Ana Martins');
+    assert.equal(defaultOpt.emlGrpCode, 'FATURACAO');
+
+    // Converting delivery 501 WITHOUT explicit recipientOverrides now defaults to the FATURACAO contact
+    const convertRes = await app.inject({
+      method: 'POST',
+      url: '/api/deliveries/convert',
+      payload: {
+        deliveryDocEntries: [501],
+        groupingMode: 'PER_DELIVERY',
+        sendEmail: true,
+      },
+    });
+    assert.equal(convertRes.statusCode, 200);
+    const body = convertRes.json();
+    assert.equal(body.records[0].recipientEmail, 'financeiro@deltacomercio.pt');
+    assert.equal(body.records[0].recipientName, 'Ana Martins');
+    assert.equal(mockEmail.sentLog.length, 1);
+    assert.equal(mockEmail.sentLog[0].to, 'financeiro@deltacomercio.pt');
+    assert.match(
+      mockEmail.sentLog[0].textBody,
+      /Exmo\.\(a\) Ana Martins \(Delta Comércio & Distribuição, Lda\.\),/
+    );
+
+    await app.close();
+  });
+
+  it('supports HTML email body template with placeholders when emailBodyIsHtml is enabled', async () => {
+    const { app, emailService } = await buildApp({ dbPath: ':memory:' });
+    const mockEmail = emailService as MockEmailService;
+
+    const htmlTemplate =
+      '<div class="invoice-mail"><p>Exmo.(a) <strong>{{ContactName}}</strong> ({{CardName}}),</p><p>Segue a Fatura <b>#{{InvoiceDocNum}}</b> referente a {{DeliveryRefs}} no valor de <span>{{DocTotal}} {{Currency}}</span>.</p></div>';
+
+    const settingsRes = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: {
+        emailBodyIsHtml: true,
+        emailBodyTemplate: htmlTemplate,
+        defaultEmlGrpCode: 'FATURACAO',
+      },
+    });
+    assert.equal(settingsRes.statusCode, 200);
+    assert.equal(settingsRes.json().settings.emailBodyIsHtml, true);
+
+    const convertRes = await app.inject({
+      method: 'POST',
+      url: '/api/deliveries/convert',
+      payload: {
+        deliveryDocEntries: [501],
+        groupingMode: 'PER_DELIVERY',
+        sendEmail: true,
+      },
+    });
+    assert.equal(convertRes.statusCode, 200);
+    assert.equal(mockEmail.sentLog.length, 1);
+
+    const sent = mockEmail.sentLog[0];
+    // HTML body keeps raw HTML tags with placeholders replaced
+    assert.match(
+      sent.htmlBody,
+      /<div class="invoice-mail"><p>Exmo\.\(a\) <strong>Ana Martins<\/strong> \(Delta Comércio & Distribuição, Lda\.\),<\/p>/
+    );
+    assert.match(sent.htmlBody, /<b>#20265001<\/b>/);
+    assert.match(sent.htmlBody, /<span>1845\.00 EUR<\/span>/);
+    // Plain-text fallback strips HTML tags cleanly
+    assert.match(
+      sent.textBody,
+      /Exmo\.\(a\) Ana Martins \(Delta Comércio & Distribuição, Lda\.\),/
+    );
+    assert.ok(!sent.textBody.includes('<strong>'));
+
+    await app.close();
+  });
+
+  it('validates delivery note item prices against last invoice and minimum item margin (averaging multiple rows of the same item)', async () => {
+    const { app } = await buildApp({ dbPath: ':memory:' });
+
+    const listRes = await app.inject({ method: 'GET', url: '/api/deliveries' });
+    assert.equal(listRes.statusCode, 200);
+    const { deliveries } = listRes.json();
+
+    // Delivery 501: all prices match last invoice and margins are 35% and 40% (>= 30%)
+    const d501 = deliveries.find((d: { docEntry: number }) => d.docEntry === 501);
+    assert.equal(d501.validation.passed, true);
+    assert.equal(d501.validation.hasPriceWarning, false);
+    assert.equal(d501.validation.hasMarginWarning, false);
+    assert.equal(d501.validation.lowestItemMarginPercent, 35);
+
+    // Delivery 502: 2 rows of item A0088 (prices 320 and 280 -> media 300 vs lastInvoicedPrice 340;
+    // margins 28.13% and 17.86% -> media 23.0% < 30%)
+    const d502 = deliveries.find((d: { docEntry: number }) => d.docEntry === 502);
+    assert.equal(d502.validation.passed, false);
+    assert.equal(d502.validation.hasPriceWarning, true);
+    assert.equal(d502.validation.hasMarginWarning, true);
+    assert.equal(d502.validation.itemSummaries.length, 1);
+    assert.equal(d502.validation.itemSummaries[0].itemCode, 'A0088');
+    assert.equal(d502.validation.itemSummaries[0].rowCount, 2);
+    assert.equal(d502.validation.itemSummaries[0].avgUnitPrice, 300);
+    assert.equal(d502.validation.itemSummaries[0].lastInvoicedPrice, 340);
+    assert.equal(d502.validation.itemSummaries[0].avgMarginPercent, 22.99);
+
+    // Delivery 503: price 700 != lastInvoicedPrice 750, margin 35% >= 30%
+    const d503 = deliveries.find((d: { docEntry: number }) => d.docEntry === 503);
+    assert.equal(d503.validation.passed, false);
+    assert.equal(d503.validation.hasPriceWarning, true);
+    assert.equal(d503.validation.hasMarginWarning, false);
+
+    // Delivery 504: price 50 == lastInvoicedPrice 50, margin 25% < 30%
+    const d504 = deliveries.find((d: { docEntry: number }) => d.docEntry === 504);
+    assert.equal(d504.validation.passed, false);
+    assert.equal(d504.validation.hasPriceWarning, false);
+    assert.equal(d504.validation.hasMarginWarning, true);
+
+    // Update settings: disable price check and set minimumMarginPercent to 20%
+    const settingsRes = await app.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      payload: {
+        checkPriceMatchLastInvoice: false,
+        checkMinimumMargin: true,
+        minimumMarginPercent: 20,
+      },
+    });
+    assert.equal(settingsRes.statusCode, 200);
+
+    const listAfterRes = await app.inject({ method: 'GET', url: '/api/deliveries' });
+    const afterDeliveries = listAfterRes.json().deliveries;
+    const d502After = afterDeliveries.find((d: { docEntry: number }) => d.docEntry === 502);
+    const d504After = afterDeliveries.find((d: { docEntry: number }) => d.docEntry === 504);
+    assert.equal(d502After.validation.passed, true);
+    assert.equal(d504After.validation.passed, true);
+
+    await app.close();
   });
 });

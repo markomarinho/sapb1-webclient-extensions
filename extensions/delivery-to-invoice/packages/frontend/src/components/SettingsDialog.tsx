@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import type { AutomationSettings, GroupingMode, PdfSourceMode } from '@b1-d2i/shared';
+import {
+  renderEmailTemplate,
+  type AutomationSettings,
+  type GroupingMode,
+  type PdfSourceMode,
+} from '@b1-d2i/shared';
 import {
   Bar,
   Button,
@@ -205,6 +210,68 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
             />
           </div>
 
+          <div>
+            <Label>
+              Grupo de Email Padrão dos Contactos (EmlGrpCode / OCPR) — seleciona por defeito o contacto com este código
+            </Label>
+            <Input
+              value={settings.defaultEmlGrpCode ?? ''}
+              placeholder="Ex.: FATURACAO (deixe vazio para usar o email principal dos Dados Mestre)"
+              style={{ width: '100%' }}
+              onInput={(e) => setSettings({ ...settings, defaultEmlGrpCode: e.target.value })}
+            />
+          </div>
+
+          <Title level="H5" style={{ marginTop: '0.5rem' }}>
+            Regras de Validação de Guias (Preços e Margens)
+          </Title>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <CheckBox
+              text="Verificar se o preço de cada artigo é igual ao último preço faturado a este cliente"
+              checked={settings.checkPriceMatchLastInvoice ?? true}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  checkPriceMatchLastInvoice: Boolean(e.target.checked),
+                })
+              }
+            />
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '2fr 1fr',
+                gap: '0.75rem',
+                alignItems: 'center',
+              }}
+            >
+              <CheckBox
+                text="Verificar margem mínima por artigo (média quando existem várias linhas do mesmo artigo)"
+                checked={settings.checkMinimumMargin ?? true}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    checkMinimumMargin: Boolean(e.target.checked),
+                  })
+                }
+              />
+              <div>
+                <Label>Margem Mínima (%)</Label>
+                <Input
+                  type="Number"
+                  value={String(settings.minimumMarginPercent ?? 30)}
+                  disabled={!(settings.checkMinimumMargin ?? true)}
+                  style={{ width: '100%' }}
+                  onInput={(e) =>
+                    setSettings({
+                      ...settings,
+                      minimumMarginPercent: Number(e.target.value) || 0,
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
           <Title level="H5" style={{ marginTop: '0.5rem' }}>
             Modelo de Email
           </Title>
@@ -217,16 +284,74 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
             />
           </div>
           <div>
-            <Label>
-              Corpo do Email (placeholders: {'{{InvoiceDocNum}}'}, {'{{InvoiceDate}}'}, {'{{CardName}}'},{' '}
-              {'{{DocTotal}}'}, {'{{Currency}}'}, {'{{DeliveryRefs}}'})
-            </Label>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+                marginBottom: '0.35rem',
+              }}
+            >
+              <Label>
+                Corpo do Email (placeholders: {'{{InvoiceDocNum}}'}, {'{{InvoiceDate}}'}, {'{{CardName}}'},{' '}
+                {'{{ContactName}}'}, {'{{RecipientName}}'}, {'{{DocTotal}}'}, {'{{Currency}}'},{' '}
+                {'{{DeliveryRefs}}'})
+              </Label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Label>Usar código HTML</Label>
+                <Switch
+                  checked={Boolean(settings.emailBodyIsHtml)}
+                  onChange={(e) =>
+                    setSettings({ ...settings, emailBodyIsHtml: Boolean(e.target.checked) })
+                  }
+                />
+              </div>
+            </div>
             <TextArea
-              rows={5}
+              rows={6}
               value={settings.emailBodyTemplate}
-              style={{ width: '100%' }}
+              placeholder={
+                settings.emailBodyIsHtml
+                  ? '<p>Exmo.(a) <strong>{{RecipientName}}</strong>,</p>\n<p>Enviamos em anexo a Fatura nº <strong>{{InvoiceDocNum}}</strong> ({{InvoiceDate}}) referente a {{DeliveryRefs}}.</p>\n<p>Total: <strong>{{DocTotal}} {{Currency}}</strong></p>'
+                  : undefined
+              }
+              style={{
+                width: '100%',
+                fontFamily: settings.emailBodyIsHtml ? 'monospace' : 'inherit',
+              }}
               onInput={(e) => setSettings({ ...settings, emailBodyTemplate: e.target.value })}
             />
+            {settings.emailBodyIsHtml && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <Label style={{ fontSize: '0.78rem', color: '#556b82' }}>
+                  Pré-visualização HTML (exemplo com placeholders aplicados):
+                </Label>
+                <div
+                  style={{
+                    marginTop: '0.25rem',
+                    padding: '0.75rem',
+                    border: '1px solid #d9d9d9',
+                    borderRadius: '6px',
+                    background: '#fafafa',
+                    fontSize: '0.85rem',
+                  }}
+                  dangerouslySetInnerHTML={{
+                    __html: renderEmailTemplate(settings.emailBodyTemplate, {
+                      InvoiceDocNum: '20265001',
+                      InvoiceDate: new Date().toISOString().slice(0, 10),
+                      CardCode: 'C20001',
+                      CardName: 'Delta Comércio & Distribuição, Lda.',
+                      ContactName: 'Ana Martins',
+                      DocTotal: '1845.00',
+                      Currency: 'EUR',
+                      DeliveryRefs: 'GR 20260101',
+                    }),
+                  }}
+                />
+              </div>
+            )}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div>

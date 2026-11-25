@@ -32,15 +32,23 @@ export interface BuildAppOptions {
   gatewayPdfClient?: IGatewayCrystalPdfClient;
 }
 
+const RecipientSelectionSchema = z.object({
+  email: z.string().email(),
+  contactName: z.string().optional(),
+  source: z.enum(['MAIN', 'UDF', 'CONTACT', 'CUSTOM']).optional(),
+});
+
 const ConvertSchema = z.object({
   deliveryDocEntries: z.array(z.number().int().positive()).min(1),
   groupingMode: z.enum(['PER_DELIVERY', 'CONSOLIDATED_BY_CUSTOMER']).default('PER_DELIVERY'),
   sendEmail: z.boolean().default(true),
   invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  recipientOverrides: z.record(z.string(), RecipientSelectionSchema).optional(),
 });
 
 const RetryEmailSchema = z.object({
   recipientEmail: z.string().email().optional(),
+  recipientName: z.string().optional(),
 });
 
 const SettingsPatchSchema = z.object({
@@ -50,8 +58,13 @@ const SettingsPatchSchema = z.object({
   onlyAutoInvoiceCustomers: z.boolean().optional(),
   minDeliveryAgeDays: z.number().int().min(0).max(365).optional(),
   sendEmailAutomatically: z.boolean().optional(),
+  defaultEmlGrpCode: z.string().max(100).optional(),
+  checkPriceMatchLastInvoice: z.boolean().optional(),
+  checkMinimumMargin: z.boolean().optional(),
+  minimumMarginPercent: z.number().min(-100).max(100).optional(),
   emailSubjectTemplate: z.string().min(1).optional(),
   emailBodyTemplate: z.string().min(1).optional(),
+  emailBodyIsHtml: z.boolean().optional(),
   ccAddresses: z.string().optional(),
   replyToAddress: z.string().optional(),
   smtpHost: z.string().optional(),
@@ -147,6 +160,12 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<{
     return { deliveries };
   });
 
+  app.get('/api/customers/:cardCode/emails', async (req) => {
+    const { cardCode } = req.params as { cardCode: string };
+    const emails = await workflow.getCustomerEmails(cardCode, req.headers.cookie);
+    return { cardCode, emails };
+  });
+
   app.post('/api/deliveries/convert', async (req, reply) => {
     const parsed = ConvertSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -182,6 +201,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<{
       const updated = await workflow.retryEmail(
         id,
         parsed.data.recipientEmail,
+        parsed.data.recipientName,
         actor,
         req.headers.cookie
       );

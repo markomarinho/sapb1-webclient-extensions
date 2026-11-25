@@ -4,6 +4,7 @@ import type {
   ConversionRecord,
   ConvertDeliveriesRequest,
   ConvertDeliveriesResponse,
+  CustomerEmailOption,
   DashboardSummary,
   OpenDeliveryNote,
   SentEmailPreview,
@@ -41,6 +42,9 @@ export const api = {
   listDeliveries(): Promise<{ deliveries: OpenDeliveryNote[] }> {
     return requestJson('/api/deliveries');
   },
+  getCustomerEmails(cardCode: string): Promise<{ cardCode: string; emails: CustomerEmailOption[] }> {
+    return requestJson(`/api/customers/${encodeURIComponent(cardCode)}/emails`);
+  },
   convertDeliveries(payload: ConvertDeliveriesRequest): Promise<ConvertDeliveriesResponse> {
     return requestJson('/api/deliveries/convert', {
       method: 'POST',
@@ -53,10 +57,17 @@ export const api = {
   listConversions(): Promise<{ conversions: ConversionRecord[] }> {
     return requestJson('/api/conversions');
   },
-  retryEmail(conversionId: string, recipientEmail?: string): Promise<{ conversion: ConversionRecord }> {
+  retryEmail(
+    conversionId: string,
+    recipientEmail?: string,
+    recipientName?: string
+  ): Promise<{ conversion: ConversionRecord }> {
+    const payload: Record<string, string> = {};
+    if (recipientEmail) payload.recipientEmail = recipientEmail;
+    if (recipientName !== undefined) payload.recipientName = recipientName;
     return requestJson(`/api/conversions/${encodeURIComponent(conversionId)}/retry-email`, {
       method: 'POST',
-      body: JSON.stringify(recipientEmail ? { recipientEmail } : {}),
+      body: JSON.stringify(payload),
     });
   },
   listEmails(): Promise<{ emails: SentEmailPreview[] }> {

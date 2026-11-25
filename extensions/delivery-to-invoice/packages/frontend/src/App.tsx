@@ -1,11 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import type {
-  ConversionItemStatus,
-  ConversionRecord,
-  DashboardSummary,
-  GroupingMode,
-  OpenDeliveryNote,
-  SentEmailPreview,
+import {
+  evaluateDeliveryNoteChecks,
+  getDeliveryEmailOptions,
+  resolveRecipientSelection,
+  type ConversionItemStatus,
+  type ConversionRecord,
+  type CustomerEmailOption,
+  type DashboardSummary,
+  type GroupingMode,
+  type OpenDeliveryNote,
+  type RecipientSelection,
+  type SentEmailPreview,
 } from '@b1-d2i/shared';
 import {
   Bar,
@@ -27,6 +32,7 @@ import {
 } from '@ui5/webcomponents-react';
 import { api, formatMoney } from './api';
 import { AuditLogDialog } from './components/AuditLogDialog';
+import { DeliveryDetailsDialog } from './components/DeliveryDetailsDialog';
 import { EmailPreviewDialog } from './components/EmailPreviewDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 
@@ -54,6 +60,7 @@ export function App() {
   const [busyAction, setBusyAction] = useState(false);
 
   const [selectedEntries, setSelectedEntries] = useState<Set<number>>(new Set());
+  const [recipientOverrides, setRecipientOverrides] = useState<Record<string, RecipientSelection>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [onlyAutoFilter, setOnlyAutoFilter] = useState(false);
   const [groupingMode, setGroupingMode] = useState<GroupingMode>('PER_DELIVERY');
@@ -62,8 +69,11 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [previewEmail, setPreviewEmail] = useState<SentEmailPreview | null>(null);
+  const [detailsDelivery, setDetailsDelivery] = useState<OpenDeliveryNote | null>(null);
   const [retryTarget, setRetryTarget] = useState<ConversionRecord | null>(null);
   const [retryEmailInput, setRetryEmailInput] = useState('');
+  const [retryRecipientName, setRetryRecipientName] = useState('');
+  const [retryCustomerOptions, setRetryCustomerOptions] = useState<CustomerEmailOption[]>([]);
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
@@ -102,10 +112,15 @@ export function App() {
       if (d.alreadyProcessed) return false;
       if (onlyAutoFilter && !d.autoInvoiceEnabled) return false;
       if (!q) return true;
+      const emailTexts = getDeliveryEmailOptions(d)
+        .map((o) => `${o.email} ${o.contactName ?? ''}`)
+        .join(' ')
+        .toLowerCase();
       return (
         String(d.docNum).includes(q) ||
         d.cardCode.toLowerCase().includes(q) ||
         d.cardName.toLowerCase().includes(q) ||
+        emailTexts.includes(q) ||
         (d.customerEmail || d.contactEmail || '').toLowerCase().includes(q) ||
         (d.numAtCard ?? '').toLowerCase().includes(q)
       );
@@ -133,16 +148,86 @@ export function App() {
     });
   };
 
+  const handleSelectDeliveryRecipient = (
+    delivery: OpenDeliveryNote,
+    option: CustomerEmailOption
+  ) => {
+    const selection: RecipientSelection = {
+      email: option.email,
+      contactName: option.source === 'CONTACT' ? (option.contactName ?? '') : '',
+      source: option.source,
+    };
+    setRecipientOverrides((prev) => {
+      const next = { ...prev, [String(delivery.docEntry)]: selection };
+      if (groupingMode === 'CONSOLIDATED_BY_CUSTOMER') {
+        for (const d of deliveries) {
+          if (d.cardCode === delivery.cardCode) {
+            next[String(d.docEntry)] = selection;
+          }
+        }
+        next[delivery.cardCode] = selection;
+      }
+      return next;
+    });
+  };
+
+  const openRetryEmailDialog = async (record: ConversionRecord) => {
+    setRetryTarget(record);
+    setRetryEmailInput(record.recipientEmail ?? '');
+    setRetryRecipientName(record.recipientName ?? '');
+
+    const fromOpenDelivery = deliveries.find((d) => d.cardCode === record.cardCode);
+    if (fromOpenDelivery) {
+      const opts = getDeliveryEmailOptions(fromOpenDelivery);
+      setRetryCustomerOptions(opts);
+      const defaultOpt = opts.find((o) => o.isDefault) ?? opts[0];
+      if (!record.recipientEmail && defaultOpt) {
+        setRetryEmailInput(defaultOpt.email);
+        setRetryRecipientName(defaultOpt.source === 'CONTACT' ? (defaultOpt.contactName ?? '') : '');
+      }
+      return;
+    }
+
+    try {
+      const res = await api.getCustomerEmails(record.cardCode);
+      setRetryCustomerOptions(res.emails);
+      const defaultOpt = res.emails.find((o) => o.isDefault) ?? res.emails[0];
+      if (!record.recipientEmail && defaultOpt) {
+        setRetryEmailInput(defaultOpt.email);
+        setRetryRecipientName(
+          defaultOpt.source === 'CONTACT' ? (defaultOpt.contactName ?? '') : ''
+        );
+      }
+    } catch {
+      setRetryCustomerOptions([]);
+    }
+  };
+
   const handleConvert = async (sendEmail: boolean) => {
     const ids = Array.from(selectedEntries);
     if (ids.length === 0) return;
     setBusyAction(true);
     setBanner(null);
     try {
+      const activeOverrides: Record<string, RecipientSelection> = {};
+      for (const id of ids) {
+        const d = deliveries.find((item) => item.docEntry === id);
+        const override =
+          recipientOverrides[String(id)] ?? (d ? recipientOverrides[d.cardCode] : undefined);
+        if (override) {
+          activeOverrides[String(id)] = override;
+          if (d && groupingMode === 'CONSOLIDATED_BY_CUSTOMER') {
+            activeOverrides[d.cardCode] = override;
+          }
+        }
+      }
       const res = await api.convertDeliveries({
         deliveryDocEntries: ids,
         groupingMode,
         sendEmail,
+        ...(Object.keys(activeOverrides).length > 0
+          ? { recipientOverrides: activeOverrides }
+          : {}),
       });
       setBanner({
         design: res.failedCount > 0 ? 'Information' : 'Positive',
@@ -188,12 +273,18 @@ export function App() {
     if (!retryTarget) return;
     setBusyAction(true);
     try {
-      const res = await api.retryEmail(retryTarget.id, retryEmailInput.trim() || undefined);
+      const res = await api.retryEmail(
+        retryTarget.id,
+        retryEmailInput.trim() || undefined,
+        retryRecipientName
+      );
       setBanner({
         design: res.conversion.status === 'INVOICED_AND_EMAILED' ? 'Positive' : 'Negative',
         text:
           res.conversion.status === 'INVOICED_AND_EMAILED'
-            ? `Email da Fatura #${res.conversion.invoiceDocNum} enviado para ${res.conversion.recipientEmail}.`
+            ? `Email da Fatura #${res.conversion.invoiceDocNum} enviado para ${res.conversion.recipientEmail}${
+                res.conversion.recipientName ? ` (${res.conversion.recipientName})` : ''
+              }.`
             : res.conversion.errorMessage || 'Falha ao reenviar email.',
       });
       setRetryTarget(null);
@@ -412,14 +503,21 @@ export function App() {
                           <th style={{ padding: '0.6rem 0.5rem' }}>Data</th>
                           <th style={{ padding: '0.6rem 0.5rem' }}>Cliente</th>
                           <th style={{ padding: '0.6rem 0.5rem' }}>Email Destino</th>
+                          <th style={{ padding: '0.6rem 0.5rem' }}>Validação (Preço & Margem)</th>
                           <th style={{ padding: '0.6rem 0.5rem' }}>Auto</th>
                           <th style={{ padding: '0.6rem 0.5rem' }}>Linhas</th>
                           <th style={{ padding: '0.6rem 0.5rem', textAlign: 'right' }}>Total</th>
+                          <th style={{ padding: '0.6rem 0.5rem' }}>Detalhes</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredDeliveries.map((d) => {
-                          const effectiveEmail = d.customerEmail || d.contactEmail || '';
+                          const emailOptions = getDeliveryEmailOptions(d);
+                          const override =
+                            recipientOverrides[String(d.docEntry)] ??
+                            recipientOverrides[d.cardCode];
+                          const resolved = resolveRecipientSelection(d, override);
+                          const validation = d.validation ?? evaluateDeliveryNoteChecks(d);
                           const isChecked = selectedEntries.has(d.docEntry);
                           return (
                             <tr
@@ -440,12 +538,85 @@ export function App() {
                                   {d.cardCode} {d.numAtCard ? `• Ref: ${d.numAtCard}` : ''}
                                 </div>
                               </td>
-                              <td style={{ padding: '0.5rem' }}>
-                                {effectiveEmail ? (
-                                  <span>{effectiveEmail}</span>
+                              <td style={{ padding: '0.5rem', minWidth: '280px' }}>
+                                {emailOptions.length > 0 ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                    <Select
+                                      style={{ width: '100%' }}
+                                      onChange={(e) => {
+                                        const optId = e.detail.selectedOption?.dataset.id;
+                                        const found = emailOptions.find((o) => o.id === optId);
+                                        if (found) handleSelectDeliveryRecipient(d, found);
+                                      }}
+                                    >
+                                      {emailOptions.map((opt) => {
+                                        const isSelected =
+                                          resolved.email?.toLowerCase() === opt.email.toLowerCase() &&
+                                          (opt.source === 'CONTACT'
+                                            ? (resolved.contactName ?? '') === (opt.contactName ?? '')
+                                            : !resolved.contactName);
+                                        return (
+                                          <Option
+                                            key={opt.id}
+                                            data-id={opt.id}
+                                            selected={isSelected}
+                                          >
+                                            {opt.label}
+                                          </Option>
+                                        );
+                                      })}
+                                    </Select>
+                                    <div style={{ fontSize: '0.75rem', color: '#556b82' }}>
+                                      {resolved.contactName
+                                        ? `Contacto no email: ${resolved.contactName}`
+                                        : 'Email principal (saudação com nome do cliente)'}
+                                    </div>
+                                  </div>
+                                ) : resolved.email ? (
+                                  <span>{resolved.email}</span>
                                 ) : (
                                   <Tag design="Critical">Sem Email</Tag>
                                 )}
+                              </td>
+                              <td style={{ padding: '0.5rem' }}>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '0.3rem',
+                                    cursor: 'pointer',
+                                  }}
+                                  title={
+                                    validation.warnings.length > 0
+                                      ? validation.warnings.join('\n')
+                                      : 'Clique para ver detalhes de preços e margens'
+                                  }
+                                  onClick={() => setDetailsDelivery(d)}
+                                >
+                                  {validation.passed ? (
+                                    <Tag design="Positive">
+                                      OK
+                                      {validation.lowestItemMarginPercent !== null
+                                        ? ` (Margem mín. ${validation.lowestItemMarginPercent.toFixed(1)}%)`
+                                        : ''}
+                                    </Tag>
+                                  ) : (
+                                    <>
+                                      {validation.hasPriceWarning && (
+                                        <Tag design="Critical">Preço ≠ Últ. Fatura</Tag>
+                                      )}
+                                      {validation.hasMarginWarning && (
+                                        <Tag design="Negative">
+                                          Margem{' '}
+                                          {validation.lowestItemMarginPercent !== null
+                                            ? `${validation.lowestItemMarginPercent.toFixed(1)}%`
+                                            : ''}{' '}
+                                          &lt; {validation.minMarginThreshold}%
+                                        </Tag>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
                               </td>
                               <td style={{ padding: '0.5rem' }}>
                                 <Tag design={d.autoInvoiceEnabled ? 'Positive' : 'Neutral'}>
@@ -455,6 +626,15 @@ export function App() {
                               <td style={{ padding: '0.5rem' }}>{d.lines.length}</td>
                               <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 600 }}>
                                 {formatMoney(d.docTotal, d.docCurrency)}
+                              </td>
+                              <td style={{ padding: '0.5rem' }}>
+                                <Button
+                                  design="Transparent"
+                                  icon="detail-view"
+                                  onClick={() => setDetailsDelivery(d)}
+                                >
+                                  Preços & Margens
+                                </Button>
                               </td>
                             </tr>
                           );
@@ -513,7 +693,20 @@ export function App() {
                               {c.deliveryDocNums.map((n) => `GR ${n}`).join(', ')}
                             </td>
                             <td style={{ padding: '0.5rem' }}>{c.cardName}</td>
-                            <td style={{ padding: '0.5rem' }}>{c.recipientEmail ?? '—'}</td>
+                            <td style={{ padding: '0.5rem' }}>
+                              {c.recipientEmail ? (
+                                <div>
+                                  {c.recipientName && (
+                                    <div style={{ fontWeight: 500 }}>{c.recipientName}</div>
+                                  )}
+                                  <div style={{ color: c.recipientName ? '#556b82' : 'inherit', fontSize: c.recipientName ? '0.78rem' : 'inherit' }}>
+                                    {c.recipientEmail}
+                                  </div>
+                                </div>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 600 }}>
                               {formatMoney(c.totalAmount, c.currency)}
                             </td>
@@ -536,16 +729,13 @@ export function App() {
                                     Ver Email
                                   </Button>
                                 )}
-                                {canRetryEmail && (
+                                {c.invoiceDocEntry !== null && (
                                   <Button
-                                    design="Default"
+                                    design={canRetryEmail ? 'Default' : 'Transparent'}
                                     icon="email"
-                                    onClick={() => {
-                                      setRetryTarget(c);
-                                      setRetryEmailInput(c.recipientEmail ?? '');
-                                    }}
+                                    onClick={() => void openRetryEmailDialog(c)}
                                   >
-                                    Enviar Email
+                                    {canRetryEmail ? 'Enviar Email' : 'Reenviar'}
                                   </Button>
                                 )}
                               </div>
@@ -575,6 +765,11 @@ export function App() {
 
       <EmailPreviewDialog email={previewEmail} onClose={() => setPreviewEmail(null)} />
 
+      <DeliveryDetailsDialog
+        delivery={detailsDelivery}
+        onClose={() => setDetailsDelivery(null)}
+      />
+
       <Dialog
         open={Boolean(retryTarget)}
         headerText={`Enviar Email — Fatura #${retryTarget?.invoiceDocNum ?? ''}`}
@@ -598,10 +793,43 @@ export function App() {
           />
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', minWidth: '340px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', minWidth: '420px' }}>
           <Text>
-            Cliente: <strong>{retryTarget?.cardName}</strong>
+            Cliente: <strong>{retryTarget?.cardName}</strong> ({retryTarget?.cardCode})
           </Text>
+          {retryCustomerOptions.length > 0 && (
+            <div>
+              <Label>Selecionar Email dos Dados Mestre do Cliente (Principal / Contactos)</Label>
+              <Select
+                style={{ width: '100%' }}
+                onChange={(e) => {
+                  const optId = e.detail.selectedOption?.dataset.id;
+                  const found = retryCustomerOptions.find((o) => o.id === optId);
+                  if (found) {
+                    setRetryEmailInput(found.email);
+                    setRetryRecipientName(
+                      found.source === 'CONTACT' ? (found.contactName ?? '') : ''
+                    );
+                  }
+                }}
+              >
+                {retryCustomerOptions.map((opt) => (
+                  <Option
+                    key={opt.id}
+                    data-id={opt.id}
+                    selected={
+                      retryEmailInput.trim().toLowerCase() === opt.email.toLowerCase() &&
+                      (opt.source === 'CONTACT'
+                        ? retryRecipientName.trim() === (opt.contactName ?? '')
+                        : !retryRecipientName.trim())
+                    }
+                  >
+                    {opt.label}
+                  </Option>
+                ))}
+              </Select>
+            </div>
+          )}
           <div>
             <Label>Endereço de Email do Destinatário</Label>
             <Input
@@ -609,7 +837,27 @@ export function App() {
               value={retryEmailInput}
               placeholder="faturacao@cliente.pt"
               style={{ width: '100%' }}
-              onInput={(e) => setRetryEmailInput(e.target.value)}
+              onInput={(e) => {
+                const nextEmail = e.target.value;
+                setRetryEmailInput(nextEmail);
+                const matched = retryCustomerOptions.find(
+                  (o) => o.email.toLowerCase() === nextEmail.trim().toLowerCase()
+                );
+                if (matched) {
+                  setRetryRecipientName(
+                    matched.source === 'CONTACT' ? (matched.contactName ?? '') : ''
+                  );
+                }
+              }}
+            />
+          </div>
+          <div>
+            <Label>Nome do Contacto (opcional — usado na saudação do email)</Label>
+            <Input
+              value={retryRecipientName}
+              placeholder="Deixe vazio para usar apenas o nome do cliente"
+              style={{ width: '100%' }}
+              onInput={(e) => setRetryRecipientName(e.target.value)}
             />
           </div>
         </div>

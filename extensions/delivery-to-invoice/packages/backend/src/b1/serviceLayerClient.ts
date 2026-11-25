@@ -1,7 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
-import type { DeliveryLine, OpenDeliveryNote } from '@b1-d2i/shared';
+import type { CustomerEmailOption, DeliveryLine, OpenDeliveryNote } from '@b1-d2i/shared';
 import { roundMoney } from '@b1-d2i/shared';
 import type { AppConfig } from '../config/env.js';
 
@@ -24,6 +24,7 @@ export interface CreatedInvoiceResult {
 
 export interface IB1ServiceLayerClient {
   listOpenDeliveries(cookieHeader?: string): Promise<OpenDeliveryNote[]>;
+  getCustomerEmails(cardCode: string, cookieHeader?: string): Promise<CustomerEmailOption[]>;
   createInvoiceFromDeliveries(
     input: CreateInvoiceFromDeliveriesInput,
     cookieHeader?: string
@@ -51,6 +52,85 @@ export interface IB1ServiceLayerClient {
   }>;
 }
 
+const MOCK_CUSTOMER_EMAILS: Record<string, CustomerEmailOption[]> = {
+  C20001: [
+    {
+      id: 'main:faturacao@deltacomercio.pt',
+      email: 'faturacao@deltacomercio.pt',
+      source: 'MAIN',
+      label: 'Principal (Dados Mestre) — faturacao@deltacomercio.pt',
+      isDefault: true,
+    },
+    {
+      id: 'contact:1:financeiro@deltacomercio.pt',
+      email: 'financeiro@deltacomercio.pt',
+      source: 'CONTACT',
+      contactName: 'Ana Martins',
+      position: 'Diretora Financeira',
+      emlGrpCode: 'FATURACAO',
+      label: 'Contacto: Ana Martins (Diretora Financeira) [FATURACAO] — financeiro@deltacomercio.pt',
+    },
+    {
+      id: 'contact:2:logistica@deltacomercio.pt',
+      email: 'logistica@deltacomercio.pt',
+      source: 'CONTACT',
+      contactName: 'Carlos Ferreira',
+      position: 'Responsável de Logística',
+      emlGrpCode: 'LOGISTICA',
+      label: 'Contacto: Carlos Ferreira (Responsável de Logística) [LOGISTICA] — logistica@deltacomercio.pt',
+    },
+  ],
+  C20015: [
+    {
+      id: 'contact:1:contas.pagar@techlusitana.pt',
+      email: 'contas.pagar@techlusitana.pt',
+      source: 'CONTACT',
+      contactName: 'Sofia Almeida',
+      position: 'Contas a Pagar',
+      emlGrpCode: 'FATURACAO',
+      label: 'Contacto: Sofia Almeida (Contas a Pagar) [FATURACAO] — contas.pagar@techlusitana.pt',
+      isDefault: true,
+    },
+    {
+      id: 'contact:2:mrodrigues@techlusitana.pt',
+      email: 'mrodrigues@techlusitana.pt',
+      source: 'CONTACT',
+      contactName: 'Miguel Rodrigues',
+      position: 'Diretor de TI',
+      emlGrpCode: 'TI',
+      label: 'Contacto: Miguel Rodrigues (Diretor de TI) [TI] — mrodrigues@techlusitana.pt',
+    },
+  ],
+  C20022: [
+    {
+      id: 'main:ap@corticeirasul.pt',
+      email: 'ap@corticeirasul.pt',
+      source: 'MAIN',
+      label: 'Principal (Dados Mestre) — ap@corticeirasul.pt',
+      isDefault: true,
+    },
+    {
+      id: 'contact:1:rtavares@corticeirasul.pt',
+      email: 'rtavares@corticeirasul.pt',
+      source: 'CONTACT',
+      contactName: 'Rui Tavares',
+      position: 'Tesouraria',
+      emlGrpCode: 'FATURACAO',
+      label: 'Contacto: Rui Tavares (Tesouraria) [FATURACAO] — rtavares@corticeirasul.pt',
+    },
+    {
+      id: 'contact:2:ihenriques@corticeirasul.pt',
+      email: 'ihenriques@corticeirasul.pt',
+      source: 'CONTACT',
+      contactName: 'Inês Henriques',
+      position: 'Compras',
+      emlGrpCode: 'COMPRAS',
+      label: 'Contacto: Inês Henriques (Compras) [COMPRAS] — ihenriques@corticeirasul.pt',
+    },
+  ],
+  C20039: [],
+};
+
 function buildSeedMockDeliveries(): OpenDeliveryNote[] {
   const today = new Date();
   const daysAgo = (n: number) => {
@@ -69,6 +149,8 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
       federalTaxId: 'PT504112233',
       customerEmail: 'faturacao@deltacomercio.pt',
       contactEmail: 'financeiro@deltacomercio.pt',
+      contactName: 'Ana Martins',
+      availableEmails: MOCK_CUSTOMER_EMAILS.C20001,
       autoInvoiceEnabled: true,
       docCurrency: 'EUR',
       vatSum: 345.0,
@@ -87,6 +169,10 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
           taxRate: 23,
           lineTotal: 1200,
           warehouseCode: '01',
+          unitCost: 780,
+          lastInvoicedPrice: 1200,
+          lastInvoicedDocNum: 20264890,
+          lastInvoicedDate: daysAgo(18),
         },
         {
           lineNum: 1,
@@ -99,6 +185,10 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
           taxRate: 23,
           lineTotal: 300,
           warehouseCode: '01',
+          unitCost: 60,
+          lastInvoicedPrice: 100,
+          lastInvoicedDocNum: 20264890,
+          lastInvoicedDate: daysAgo(18),
         },
       ],
     },
@@ -112,24 +202,46 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
       federalTaxId: 'PT504112233',
       customerEmail: 'faturacao@deltacomercio.pt',
       contactEmail: 'financeiro@deltacomercio.pt',
+      contactName: 'Ana Martins',
+      availableEmails: MOCK_CUSTOMER_EMAILS.C20001,
       autoInvoiceEnabled: true,
       docCurrency: 'EUR',
       vatSum: 138.0,
       docTotal: 738.0,
       numAtCard: 'ENC-8840',
-      comments: 'Entrega adicional cablagem e switches',
+      comments: 'Entrega adicional cablagem e switches (2 linhas do mesmo artigo A0088 com preços diferentes)',
       lines: [
         {
           lineNum: 0,
           itemCode: 'A0088',
           itemDescription: 'Switch Gigabit Managed 24P',
-          quantity: 2,
-          unitPrice: 300,
+          quantity: 1,
+          unitPrice: 320,
           discountPercent: 0,
           taxCode: 'IVA23',
           taxRate: 23,
-          lineTotal: 600,
+          lineTotal: 320,
           warehouseCode: '01',
+          unitCost: 230,
+          lastInvoicedPrice: 340,
+          lastInvoicedDocNum: 20264912,
+          lastInvoicedDate: daysAgo(12),
+        },
+        {
+          lineNum: 1,
+          itemCode: 'A0088',
+          itemDescription: 'Switch Gigabit Managed 24P',
+          quantity: 1,
+          unitPrice: 280,
+          discountPercent: 0,
+          taxCode: 'IVA23',
+          taxRate: 23,
+          lineTotal: 280,
+          warehouseCode: '02',
+          unitCost: 230,
+          lastInvoicedPrice: 340,
+          lastInvoicedDocNum: 20264912,
+          lastInvoicedDate: daysAgo(12),
         },
       ],
     },
@@ -143,6 +255,8 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
       federalTaxId: 'PT509876544',
       customerEmail: '',
       contactEmail: 'contas.pagar@techlusitana.pt',
+      contactName: 'Sofia Almeida',
+      availableEmails: MOCK_CUSTOMER_EMAILS.C20015,
       autoInvoiceEnabled: true,
       docCurrency: 'EUR',
       vatSum: 805.0,
@@ -161,6 +275,10 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
           taxRate: 23,
           lineTotal: 3500,
           warehouseCode: '02',
+          unitCost: 455,
+          lastInvoicedPrice: 750,
+          lastInvoicedDocNum: 20264705,
+          lastInvoicedDate: daysAgo(25),
         },
       ],
     },
@@ -173,6 +291,9 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
       cardName: 'Corticeira do Sul, S.A.',
       federalTaxId: 'PT507654323',
       customerEmail: 'ap@corticeirasul.pt',
+      contactEmail: 'rtavares@corticeirasul.pt',
+      contactName: 'Rui Tavares',
+      availableEmails: MOCK_CUSTOMER_EMAILS.C20022,
       autoInvoiceEnabled: false,
       docCurrency: 'EUR',
       vatSum: 690.0,
@@ -191,6 +312,10 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
           taxRate: 23,
           lineTotal: 3000,
           warehouseCode: '01',
+          unitCost: 37.5,
+          lastInvoicedPrice: 50,
+          lastInvoicedDocNum: 20264950,
+          lastInvoicedDate: daysAgo(9),
         },
       ],
     },
@@ -204,6 +329,7 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
       federalTaxId: 'PT512345678',
       customerEmail: '',
       contactEmail: '',
+      availableEmails: MOCK_CUSTOMER_EMAILS.C20039,
       autoInvoiceEnabled: true,
       docCurrency: 'EUR',
       vatSum: 115.0,
@@ -222,6 +348,10 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
           taxRate: 23,
           lineTotal: 500,
           warehouseCode: '01',
+          unitCost: 150,
+          lastInvoicedPrice: 250,
+          lastInvoicedDocNum: 20264810,
+          lastInvoicedDate: daysAgo(30),
         },
       ],
     },
@@ -259,6 +389,10 @@ export class MockServiceLayerClient implements IB1ServiceLayerClient {
 
   async listOpenDeliveries(): Promise<OpenDeliveryNote[]> {
     return Array.from(this.deliveries.values()).sort((a, b) => a.docNum - b.docNum);
+  }
+
+  async getCustomerEmails(cardCode: string): Promise<CustomerEmailOption[]> {
+    return MOCK_CUSTOMER_EMAILS[cardCode] ?? [];
   }
 
   async createInvoiceFromDeliveries(
@@ -430,6 +564,110 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
     return (res.bodyText ? JSON.parse(res.bodyText) : {}) as T;
   }
 
+  private extractBpEmailOptions(bp: Record<string, unknown>): {
+    primaryEmail: string;
+    firstContactEmail: string;
+    firstContactName: string;
+    availableEmails: CustomerEmailOption[];
+  } {
+    const emailUdf = this.config.B1_BP_INVOICE_EMAIL_UDF;
+    const udfEmail = emailUdf ? String(bp[emailUdf] ?? '').trim() : '';
+    const mainEmail = String(bp.EmailAddress ?? '').trim();
+
+    const availableEmails: CustomerEmailOption[] = [];
+
+    if (udfEmail && udfEmail.includes('@')) {
+      availableEmails.push({
+        id: `udf:${udfEmail.toLowerCase()}`,
+        email: udfEmail,
+        source: 'UDF',
+        label: `Email Faturação (${emailUdf}) — ${udfEmail}`,
+        isDefault: true,
+      });
+    }
+
+    if (mainEmail && mainEmail.includes('@')) {
+      const alreadyAdded = availableEmails.some(
+        (e) => e.email.toLowerCase() === mainEmail.toLowerCase() && e.source !== 'CONTACT'
+      );
+      if (!alreadyAdded) {
+        availableEmails.push({
+          id: `main:${mainEmail.toLowerCase()}`,
+          email: mainEmail,
+          source: 'MAIN',
+          label: `Principal (Dados Mestre) — ${mainEmail}`,
+          isDefault: availableEmails.length === 0,
+        });
+      }
+    }
+
+    const contacts = Array.isArray(bp.ContactEmployees)
+      ? (bp.ContactEmployees as Array<Record<string, unknown>>)
+      : [];
+
+    let firstContactEmail = '';
+    let firstContactName = '';
+
+    contacts.forEach((c, idx) => {
+      const active = String(c.Active ?? 'tYES');
+      if (active === 'tNO') return;
+      const email = String(c.E_Mail ?? c.E_MailL ?? '').trim();
+      if (!email || !email.includes('@')) return;
+
+      const firstName = String(c.FirstName ?? '').trim();
+      const middleName = String(c.MiddleName ?? '').trim();
+      const lastName = String(c.LastName ?? '').trim();
+      const fullName = [firstName, middleName, lastName].filter(Boolean).join(' ').trim();
+      const rawName = String(c.Name ?? '').trim();
+      const contactName = fullName || rawName || `Contacto #${idx + 1}`;
+      const position = String(c.Position ?? c.Title ?? '').trim() || undefined;
+      const emlGrpCode = String(c.EmailGroupCode ?? c.EmlGrpCode ?? '').trim() || undefined;
+      const internalCode = c.InternalCode ?? idx + 1;
+
+      if (!firstContactEmail) {
+        firstContactEmail = email;
+        firstContactName = contactName;
+      }
+
+      const roleSuffix = position ? ` (${position})` : '';
+      const groupSuffix = emlGrpCode ? ` [${emlGrpCode}]` : '';
+      availableEmails.push({
+        id: `contact:${internalCode}:${email.toLowerCase()}`,
+        email,
+        source: 'CONTACT',
+        contactName,
+        position,
+        emlGrpCode,
+        label: `Contacto: ${contactName}${roleSuffix}${groupSuffix} — ${email}`,
+        isDefault: availableEmails.length === 0,
+      });
+    });
+
+    const primaryEmail =
+      udfEmail.includes('@') ? udfEmail : mainEmail.includes('@') ? mainEmail : '';
+
+    return {
+      primaryEmail,
+      firstContactEmail,
+      firstContactName,
+      availableEmails,
+    };
+  }
+
+  async getCustomerEmails(cardCode: string, cookieHeader?: string): Promise<CustomerEmailOption[]> {
+    try {
+      const safeCode = cardCode.replace(/'/g, "''");
+      const bp = await this.requestJson<Record<string, unknown>>(
+        'GET',
+        `/BusinessPartners('${encodeURIComponent(safeCode)}')`,
+        cookieHeader
+      );
+      return this.extractBpEmailOptions(bp).availableEmails;
+    } catch {
+      return [];
+    }
+  }
+
   async listOpenDeliveries(cookieHeader?: string): Promise<OpenDeliveryNote[]> {
     const filter = encodeURIComponent("DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'");
     const select = encodeURIComponent(
@@ -445,13 +683,58 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
     const uniqueCardCodes = Array.from(new Set(rawDeliveries.map((d) => String(d.CardCode))));
     const bpMap = new Map<
       string,
-      { email: string; contactEmail: string; nif: string; autoInvoice: boolean }
+      {
+        email: string;
+        contactEmail: string;
+        contactName: string;
+        availableEmails: CustomerEmailOption[];
+        nif: string;
+        autoInvoice: boolean;
+        lastInvoicedByItem: Map<string, { price: number; docNum: number; docDate: string }>;
+      }
     >();
 
     const autoUdf = this.config.B1_BP_AUTO_INVOICE_UDF;
-    const emailUdf = this.config.B1_BP_INVOICE_EMAIL_UDF;
 
     for (const cardCode of uniqueCardCodes) {
+      const lastInvoicedByItem = new Map<
+        string,
+        { price: number; docNum: number; docDate: string }
+      >();
+      try {
+        const safeCode = cardCode.replace(/'/g, "''");
+        const invFilter = encodeURIComponent(
+          `CardCode eq '${safeCode}' and Cancelled eq 'tNO'`
+        );
+        const invSelect = encodeURIComponent('DocEntry,DocNum,DocDate,DocumentLines');
+        const invData = await this.requestJson<{ value?: Array<Record<string, unknown>> }>(
+          'GET',
+          `/Invoices?$filter=${invFilter}&$select=${invSelect}&$orderby=DocDate desc,DocEntry desc&$top=25`,
+          cookieHeader
+        );
+        for (const inv of invData.value ?? []) {
+          const invDocNum = Number(inv.DocNum ?? 0);
+          const invDocDate = String(inv.DocDate ?? '').slice(0, 10);
+          const invLines = Array.isArray(inv.DocumentLines)
+            ? (inv.DocumentLines as Array<Record<string, unknown>>)
+            : [];
+          for (const il of invLines) {
+            const itemCode = String(il.ItemCode ?? '');
+            if (!itemCode || lastInvoicedByItem.has(itemCode)) continue;
+            const unitPrice = Number(il.Price ?? 0);
+            const discount = Number(il.DiscountPercent ?? 0);
+            const netPrice = roundMoney(unitPrice * (1 - discount / 100));
+            lastInvoicedByItem.set(itemCode, {
+              price: netPrice,
+              docNum: invDocNum,
+              docDate: invDocDate,
+            });
+          }
+        }
+      } catch {
+        // Ignore if invoice history query is unavailable
+      }
+
       try {
         const safeCode = cardCode.replace(/'/g, "''");
         const bp = await this.requestJson<Record<string, unknown>>(
@@ -459,24 +742,29 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
           `/BusinessPartners('${encodeURIComponent(safeCode)}')`,
           cookieHeader
         );
-        const contacts = Array.isArray(bp.ContactEmployees)
-          ? (bp.ContactEmployees as Array<Record<string, unknown>>)
-          : [];
-        const contactEmail =
-          contacts.map((c) => String(c.E_Mail ?? '')).find((e) => e.includes('@')) ?? '';
-        const udfEmail = emailUdf ? String(bp[emailUdf] ?? '') : '';
-        const primaryEmail = udfEmail.includes('@') ? udfEmail : String(bp.EmailAddress ?? '');
+        const extracted = this.extractBpEmailOptions(bp);
         const autoFlagRaw = autoUdf ? String(bp[autoUdf] ?? '').toUpperCase() : 'Y';
         const autoInvoice = autoFlagRaw === 'Y' || autoFlagRaw === 'YES' || autoFlagRaw === 'TYES' || autoFlagRaw === '1';
 
         bpMap.set(cardCode, {
-          email: primaryEmail,
-          contactEmail,
+          email: extracted.primaryEmail,
+          contactEmail: extracted.firstContactEmail,
+          contactName: extracted.firstContactName,
+          availableEmails: extracted.availableEmails,
           nif: String(bp.FederalTaxID ?? ''),
           autoInvoice,
+          lastInvoicedByItem,
         });
       } catch {
-        bpMap.set(cardCode, { email: '', contactEmail: '', nif: '', autoInvoice: false });
+        bpMap.set(cardCode, {
+          email: '',
+          contactEmail: '',
+          contactName: '',
+          availableEmails: [],
+          nif: '',
+          autoInvoice: false,
+          lastInvoicedByItem,
+        });
       }
     }
 
@@ -488,18 +776,26 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
         : [];
       const lines: DeliveryLine[] = rawLines
         .filter((l) => String(l.LineStatus ?? 'bost_Open') === 'bost_Open')
-        .map((l) => ({
-          lineNum: Number(l.LineNum ?? 0),
-          itemCode: String(l.ItemCode ?? ''),
-          itemDescription: String(l.ItemDescription ?? ''),
-          quantity: Number(l.RemainingOpenQuantity ?? l.Quantity ?? 0),
-          unitPrice: Number(l.Price ?? 0),
-          discountPercent: Number(l.DiscountPercent ?? 0),
-          taxCode: String(l.TaxCode ?? ''),
-          taxRate: Number(l.TaxPercentagePerRow ?? 0),
-          lineTotal: Number(l.LineTotal ?? 0),
-          warehouseCode: l.WarehouseCode ? String(l.WarehouseCode) : undefined,
-        }));
+        .map((l) => {
+          const itemCode = String(l.ItemCode ?? '');
+          const lastInv = bp?.lastInvoicedByItem.get(itemCode);
+          return {
+            lineNum: Number(l.LineNum ?? 0),
+            itemCode,
+            itemDescription: String(l.ItemDescription ?? ''),
+            quantity: Number(l.RemainingOpenQuantity ?? l.Quantity ?? 0),
+            unitPrice: Number(l.Price ?? 0),
+            discountPercent: Number(l.DiscountPercent ?? 0),
+            taxCode: String(l.TaxCode ?? ''),
+            taxRate: Number(l.TaxPercentagePerRow ?? 0),
+            lineTotal: Number(l.LineTotal ?? 0),
+            warehouseCode: l.WarehouseCode ? String(l.WarehouseCode) : undefined,
+            unitCost: Number(l.GrossBuyPrice ?? l.StockPrice ?? 0),
+            lastInvoicedPrice: lastInv ? lastInv.price : null,
+            lastInvoicedDocNum: lastInv ? lastInv.docNum : null,
+            lastInvoicedDate: lastInv ? lastInv.docDate : null,
+          };
+        });
 
       return {
         docEntry: Number(d.DocEntry),
@@ -511,6 +807,8 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
         federalTaxId: bp?.nif ?? '',
         customerEmail: bp?.email ?? '',
         contactEmail: bp?.contactEmail ?? '',
+        contactName: bp?.contactName || undefined,
+        availableEmails: bp?.availableEmails ?? [],
         autoInvoiceEnabled: bp?.autoInvoice ?? false,
         docCurrency: String(d.DocCurrency ?? 'EUR'),
         docTotal: Number(d.DocTotal ?? 0),

@@ -28,6 +28,7 @@ export interface SaveConversionInput {
   currency: string;
   totalAmount: number;
   recipientEmail: string | null;
+  recipientName?: string | null;
   emailSubject: string | null;
   emailSentAt: string | null;
   status: ConversionItemStatus;
@@ -60,8 +61,13 @@ export class ExtensionDatabase {
         only_auto_invoice_customers INTEGER NOT NULL DEFAULT 1,
         min_delivery_age_days INTEGER NOT NULL DEFAULT 0,
         send_email_automatically INTEGER NOT NULL DEFAULT 1,
+        default_eml_grp_code TEXT NOT NULL DEFAULT '',
+        check_price_match_last_invoice INTEGER NOT NULL DEFAULT 1,
+        check_minimum_margin INTEGER NOT NULL DEFAULT 1,
+        minimum_margin_percent REAL NOT NULL DEFAULT 30,
         email_subject_template TEXT NOT NULL,
         email_body_template TEXT NOT NULL,
+        email_body_is_html INTEGER NOT NULL DEFAULT 0,
         cc_addresses TEXT NOT NULL DEFAULT '',
         reply_to_address TEXT NOT NULL DEFAULT '',
         smtp_host TEXT NOT NULL DEFAULT '',
@@ -93,6 +99,7 @@ export class ExtensionDatabase {
         currency TEXT NOT NULL,
         total_amount REAL NOT NULL,
         recipient_email TEXT,
+        recipient_name TEXT,
         email_subject TEXT,
         email_sent_at TEXT,
         status TEXT NOT NULL,
@@ -113,6 +120,7 @@ export class ExtensionDatabase {
         id TEXT PRIMARY KEY,
         conversion_id TEXT NOT NULL REFERENCES conversion_records(id),
         recipient_to TEXT NOT NULL,
+        recipient_name TEXT NOT NULL DEFAULT '',
         recipient_cc TEXT NOT NULL DEFAULT '',
         subject TEXT NOT NULL,
         html_body TEXT NOT NULL,
@@ -152,6 +160,49 @@ export class ExtensionDatabase {
         'ALTER TABLE settings ADD COLUMN gateway_fallback_builtin INTEGER NOT NULL DEFAULT 0;'
       );
     }
+    if (!settingsCols.has('default_eml_grp_code')) {
+      this.db.exec(
+        "ALTER TABLE settings ADD COLUMN default_eml_grp_code TEXT NOT NULL DEFAULT '';"
+      );
+    }
+    if (!settingsCols.has('email_body_is_html')) {
+      this.db.exec(
+        'ALTER TABLE settings ADD COLUMN email_body_is_html INTEGER NOT NULL DEFAULT 0;'
+      );
+    }
+    if (!settingsCols.has('check_price_match_last_invoice')) {
+      this.db.exec(
+        'ALTER TABLE settings ADD COLUMN check_price_match_last_invoice INTEGER NOT NULL DEFAULT 1;'
+      );
+    }
+    if (!settingsCols.has('check_minimum_margin')) {
+      this.db.exec(
+        'ALTER TABLE settings ADD COLUMN check_minimum_margin INTEGER NOT NULL DEFAULT 1;'
+      );
+    }
+    if (!settingsCols.has('minimum_margin_percent')) {
+      this.db.exec(
+        'ALTER TABLE settings ADD COLUMN minimum_margin_percent REAL NOT NULL DEFAULT 30;'
+      );
+    }
+
+    const convCols = new Set(
+      (this.db.prepare('PRAGMA table_info(conversion_records)').all() as Array<{ name: string }>).map(
+        (c) => c.name
+      )
+    );
+    if (!convCols.has('recipient_name')) {
+      this.db.exec('ALTER TABLE conversion_records ADD COLUMN recipient_name TEXT;');
+    }
+
+    const emailCols = new Set(
+      (this.db.prepare('PRAGMA table_info(sent_emails)').all() as Array<{ name: string }>).map(
+        (c) => c.name
+      )
+    );
+    if (!emailCols.has('recipient_name')) {
+      this.db.exec("ALTER TABLE sent_emails ADD COLUMN recipient_name TEXT NOT NULL DEFAULT '';");
+    }
   }
 
   private ensureDefaultSettings(config?: Partial<AppConfig>): void {
@@ -175,12 +226,14 @@ export class ExtensionDatabase {
         `INSERT INTO settings (
           id, scheduler_enabled, interval_minutes, grouping_mode,
           only_auto_invoice_customers, min_delivery_age_days, send_email_automatically,
+          default_eml_grp_code,
           email_subject_template, email_body_template, cc_addresses, reply_to_address,
           smtp_host, smtp_port, smtp_secure, smtp_user, smtp_password, smtp_from,
           pdf_source, gateway_url, invoice_doc_code, gateway_fallback_builtin
-        ) VALUES (1, 0, 60, 'PER_DELIVERY', 1, 0, 1, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (1, 0, 60, 'PER_DELIVERY', 1, 0, 1, ?, ?, ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
+        config?.B1_DEFAULT_EML_GRP_CODE ?? '',
         defaultSubject,
         defaultBody,
         config?.SMTP_HOST ?? '',
@@ -208,8 +261,18 @@ export class ExtensionDatabase {
       onlyAutoInvoiceCustomers: Boolean(row.only_auto_invoice_customers),
       minDeliveryAgeDays: Number(row.min_delivery_age_days),
       sendEmailAutomatically: Boolean(row.send_email_automatically),
+      defaultEmlGrpCode: String(row.default_eml_grp_code ?? ''),
+      checkPriceMatchLastInvoice:
+        row.check_price_match_last_invoice !== undefined
+          ? Boolean(row.check_price_match_last_invoice)
+          : true,
+      checkMinimumMargin:
+        row.check_minimum_margin !== undefined ? Boolean(row.check_minimum_margin) : true,
+      minimumMarginPercent:
+        row.minimum_margin_percent !== undefined ? Number(row.minimum_margin_percent) : 30,
       emailSubjectTemplate: String(row.email_subject_template),
       emailBodyTemplate: String(row.email_body_template),
+      emailBodyIsHtml: Boolean(row.email_body_is_html),
       ccAddresses: String(row.cc_addresses ?? ''),
       replyToAddress: String(row.reply_to_address ?? ''),
       smtpHost: String(row.smtp_host ?? ''),
@@ -250,8 +313,13 @@ export class ExtensionDatabase {
           only_auto_invoice_customers = ?,
           min_delivery_age_days = ?,
           send_email_automatically = ?,
+          default_eml_grp_code = ?,
+          check_price_match_last_invoice = ?,
+          check_minimum_margin = ?,
+          minimum_margin_percent = ?,
           email_subject_template = ?,
           email_body_template = ?,
+          email_body_is_html = ?,
           cc_addresses = ?,
           reply_to_address = ?,
           smtp_host = ?,
@@ -273,8 +341,13 @@ export class ExtensionDatabase {
         (patch.onlyAutoInvoiceCustomers ?? current.onlyAutoInvoiceCustomers) ? 1 : 0,
         Math.max(0, patch.minDeliveryAgeDays ?? current.minDeliveryAgeDays),
         (patch.sendEmailAutomatically ?? current.sendEmailAutomatically) ? 1 : 0,
+        (patch.defaultEmlGrpCode ?? current.defaultEmlGrpCode).trim(),
+        (patch.checkPriceMatchLastInvoice ?? current.checkPriceMatchLastInvoice) ? 1 : 0,
+        (patch.checkMinimumMargin ?? current.checkMinimumMargin) ? 1 : 0,
+        patch.minimumMarginPercent ?? current.minimumMarginPercent,
         patch.emailSubjectTemplate ?? current.emailSubjectTemplate,
         patch.emailBodyTemplate ?? current.emailBodyTemplate,
+        (patch.emailBodyIsHtml ?? current.emailBodyIsHtml) ? 1 : 0,
         patch.ccAddresses ?? current.ccAddresses,
         patch.replyToAddress ?? current.replyToAddress,
         patch.smtpHost ?? current.smtpHost,
@@ -319,9 +392,9 @@ export class ExtensionDatabase {
           id, run_id, trigger_source, grouping_mode, card_code, card_name,
           delivery_doc_entries_json, delivery_doc_nums_json,
           invoice_doc_entry, invoice_doc_num, invoice_date,
-          currency, total_amount, recipient_email, email_subject, email_sent_at,
+          currency, total_amount, recipient_email, recipient_name, email_subject, email_sent_at,
           status, error_message, created_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         rec.id,
@@ -338,6 +411,7 @@ export class ExtensionDatabase {
         rec.currency,
         rec.totalAmount,
         rec.recipientEmail,
+        rec.recipientName ?? null,
         rec.emailSubject,
         rec.emailSentAt,
         rec.status,
@@ -363,6 +437,7 @@ export class ExtensionDatabase {
     patch: {
       status: ConversionItemStatus;
       recipientEmail?: string | null;
+      recipientName?: string | null;
       emailSubject?: string | null;
       emailSentAt?: string | null;
       errorMessage?: string | null;
@@ -373,6 +448,7 @@ export class ExtensionDatabase {
         `UPDATE conversion_records SET
           status = ?,
           recipient_email = COALESCE(?, recipient_email),
+          recipient_name = ?,
           email_subject = COALESCE(?, email_subject),
           email_sent_at = COALESCE(?, email_sent_at),
           error_message = ?
@@ -381,6 +457,7 @@ export class ExtensionDatabase {
       .run(
         patch.status,
         patch.recipientEmail ?? null,
+        patch.recipientName !== undefined ? patch.recipientName : null,
         patch.emailSubject ?? null,
         patch.emailSentAt ?? null,
         patch.errorMessage ?? null,
@@ -418,6 +495,7 @@ export class ExtensionDatabase {
       currency: String(row.currency),
       totalAmount: Number(row.total_amount),
       recipientEmail: row.recipient_email ? String(row.recipient_email) : null,
+      recipientName: row.recipient_name ? String(row.recipient_name) : null,
       emailSubject: row.email_subject ? String(row.email_subject) : null,
       emailSentAt: row.email_sent_at ? String(row.email_sent_at) : null,
       status: row.status as ConversionItemStatus,
@@ -431,14 +509,15 @@ export class ExtensionDatabase {
     this.db
       .prepare(
         `INSERT INTO sent_emails (
-          id, conversion_id, recipient_to, recipient_cc, subject,
+          id, conversion_id, recipient_to, recipient_name, recipient_cc, subject,
           html_body, attachment_filename, attachment_bytes, sent_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         email.id,
         email.conversionId,
         email.to,
+        email.recipientName ?? '',
         email.cc ?? '',
         email.subject,
         email.htmlBody,
@@ -456,6 +535,7 @@ export class ExtensionDatabase {
       id: String(r.id),
       conversionId: String(r.conversion_id),
       to: String(r.recipient_to),
+      recipientName: r.recipient_name ? String(r.recipient_name) : undefined,
       cc: r.recipient_cc ? String(r.recipient_cc) : undefined,
       subject: String(r.subject),
       htmlBody: String(r.html_body),

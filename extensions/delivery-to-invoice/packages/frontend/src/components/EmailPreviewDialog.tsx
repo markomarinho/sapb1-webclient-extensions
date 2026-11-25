@@ -28,7 +28,9 @@ export function EmailPreviewDialog({ email, onClose }: EmailPreviewDialogProps) 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <div>
             <Label>Para: </Label>
-            <Text>{email.to}</Text>
+            <Text>
+              {email.recipientName ? `${email.recipientName} <${email.to}>` : email.to}
+            </Text>
           </div>
           {email.cc && (
             <div>
