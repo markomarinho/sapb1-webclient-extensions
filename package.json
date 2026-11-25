@@ -1,20 +1,19 @@
 {
-  "name": "sap-b1-pt-bank-reconciliation",
+  "name": "sapb1-webclient-extensions",
   "version": "1.0.0",
   "private": true,
-  "description": "On-premise SAP Business One (HANA) Web Client Extension for Bank Reconciliation (SWIFT MT940 & Norma 43)",
+  "description": "Monorepo of on-premise SAP Business One (HANA) Web Client extensions",
   "workspaces": [
-    "packages/shared",
-    "packages/backend",
-    "packages/frontend"
+    "extensions/*",
+    "extensions/*/packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -n API,WEB -c cyan,green \"npm run dev -w @b1-recon/backend\" \"npm run dev -w @b1-recon/frontend\"",
-    "build": "npm run build -w @b1-recon/shared && npm run build -w @b1-recon/backend && npm run build -w @b1-recon/frontend",
-    "build:mtar": "npm run build && node scripts/build-mtar.mjs",
-    "start": "node packages/backend/dist/server.js",
-    "test": "npm run build -w @b1-recon/shared && npm run test -w @b1-recon/backend",
-    "typecheck": "npm run build -w @b1-recon/shared && npm run typecheck -w @b1-recon/backend && npm run typecheck -w @b1-recon/frontend"
+    "new": "node scripts/new-extension.mjs",
+    "list": "node scripts/ext.mjs --list",
+    "build": "node scripts/ext.mjs build",
+    "build:mtar": "node scripts/ext.mjs build:mtar",
+    "test": "node scripts/ext.mjs test",
+    "typecheck": "node scripts/ext.mjs typecheck"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",

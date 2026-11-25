@@ -1,46 +1,49 @@
+#!/usr/bin/env node
+// Generic MTAR packager for frontend-only (single-page-app) Web Client extensions.
+// Run from an extension folder (cwd). Reads ID / version / provider / description
+// from the extension's mta.yaml and zips packages/frontend/dist into
+// mta_archives/<id>_<version>.mtar, ready for the SAP B1 Extension Manager.
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const rootDir = process.cwd();
-const frontendDist = path.join(rootDir, 'packages/frontend/dist');
-const outDir = path.join(rootDir, 'mta_archives');
-const cachedMbtBin =
-  '/Users/marcomarinho/.npm/_npx/32f204a681b479b0/node_modules/mbt/unpacked_bin/mbt';
+const extDir = process.cwd();
+const mtaPath = path.join(extDir, 'mta.yaml');
+const frontendDist = path.join(extDir, 'packages/frontend/dist');
+const outDir = path.join(extDir, 'mta_archives');
 
+if (!fs.existsSync(mtaPath)) {
+  console.error(`Error: ${mtaPath} not found. Run this from an extension folder.`);
+  process.exit(1);
+}
 if (!fs.existsSync(frontendDist)) {
   console.error('Error: packages/frontend/dist does not exist. Run "npm run build" first.');
   process.exit(1);
 }
 
+const mta = fs.readFileSync(mtaPath, 'utf8');
+const field = (key) => {
+  const m = mta.match(new RegExp(`^${key}:\\s*"?([^"\\r\\n]*)"?\\s*$`, 'm'));
+  if (!m) throw new Error(`mta.yaml is missing top-level "${key}"`);
+  return m[1].trim();
+};
+const id = field('ID');
+const version = field('version');
+const provider = field('provider');
+const description = field('description');
+
 fs.rmSync(outDir, { recursive: true, force: true });
-fs.mkdirSync(outDir, { recursive: true });
+const staging = path.join(outDir, '.staging');
+fs.mkdirSync(path.join(staging, 'META-INF'), { recursive: true });
+fs.mkdirSync(path.join(staging, 'webclient'), { recursive: true });
 
-if (fs.existsSync(cachedMbtBin)) {
-  console.log('Building MTAR using official SAP Cloud MTA Build Tool (mbt v1.2.53)...');
-  execFileSync(
-    cachedMbtBin,
-    ['build', '-t', outDir, '--mtar', 'pt-bank-reconciliation_1.0.1.mtar'],
-    {
-      cwd: rootDir,
-      stdio: 'inherit',
-    }
-  );
-} else {
-  console.log('Building MTAR using zip archive builder...');
-  const spaStaging = path.join(outDir, '.staging-spa');
-  const spaMtarPath = path.join(outDir, 'pt-bank-reconciliation_1.0.1.mtar');
-  fs.mkdirSync(path.join(spaStaging, 'META-INF'), { recursive: true });
-  fs.mkdirSync(path.join(spaStaging, 'webclient'), { recursive: true });
-  execFileSync('zip', ['-r', '-q', path.join(spaStaging, 'webclient/data.zip'), '.'], {
-    cwd: frontendDist,
-  });
+execFileSync('zip', ['-r', '-q', path.join(staging, 'webclient/data.zip'), '.'], { cwd: frontendDist });
 
-  const mtadYaml = `_schema-version: "3.2"
-ID: Bank-Reconciliation
-description: Bank Reconciliation (SWIFT MT940 & Norma 43)
-version: 1.0.1
-provider: MARKO
+const mtad = `_schema-version: "3.2"
+ID: ${id}
+description: ${description}
+version: ${version}
+provider: ${provider}
 modules:
 - name: webclient
   type: single-page-app
@@ -48,30 +51,25 @@ modules:
   parameters:
     deploy_mode: b1-webclient
 `;
-  const manifestMf = [
-    'manifest-Version: 1.0',
-    'Created-By: SAP Application Archive Builder 1.2.53',
-    '',
-    'Name: webclient/data.zip',
-    'MTA-Module: webclient',
-    'Content-Type: application/zip',
-    '',
-    '',
-    'Name: META-INF/mtad.yaml',
-    'Content-Type: text/plain',
-    '',
-  ].join('\n');
+const manifest = [
+  'manifest-Version: 1.0',
+  'Created-By: SAP Application Archive Builder 1.2.53',
+  '',
+  'Name: webclient/data.zip',
+  'MTA-Module: webclient',
+  'Content-Type: application/zip',
+  '',
+  '',
+  'Name: META-INF/mtad.yaml',
+  'Content-Type: text/plain',
+  '',
+].join('\n');
 
-  fs.writeFileSync(path.join(spaStaging, 'META-INF/mtad.yaml'), mtadYaml, 'utf8');
-  fs.writeFileSync(path.join(spaStaging, 'META-INF/MANIFEST.MF'), manifestMf, 'utf8');
-  execFileSync('zip', ['-r', '-q', spaMtarPath, 'META-INF', 'webclient'], { cwd: spaStaging });
-  fs.rmSync(spaStaging, { recursive: true, force: true });
-}
+fs.writeFileSync(path.join(staging, 'META-INF/mtad.yaml'), mtad, 'utf8');
+fs.writeFileSync(path.join(staging, 'META-INF/MANIFEST.MF'), manifest, 'utf8');
 
-// Keep a copy named pt-bank-reconciliation_1.0.0.mtar for convenience
-fs.cpSync(
-  path.join(outDir, 'pt-bank-reconciliation_1.0.1.mtar'),
-  path.join(outDir, 'pt-bank-reconciliation_1.0.0.mtar')
-);
+const mtarPath = path.join(outDir, `${id}_${version}.mtar`);
+execFileSync('zip', ['-r', '-q', mtarPath, 'META-INF', 'webclient'], { cwd: staging });
+fs.rmSync(staging, { recursive: true, force: true });
 
-console.log(`Ready: ${path.join(outDir, 'pt-bank-reconciliation_1.0.1.mtar')}`);
+console.log(`Ready: ${mtarPath}`);

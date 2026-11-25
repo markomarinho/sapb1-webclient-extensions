@@ -1,6 +1,8 @@
 services:
   b1-recon-backend:
-    build: .
+    build:
+      context: ../..
+      dockerfile: extensions/bank-reconciliation/Dockerfile
     container_name: sap-b1-pt-recon-backend
     restart: unless-stopped
     ports:
@@ -8,7 +10,7 @@ services:
     env_file:
       - .env
     volumes:
-      - recon_data:/app/data
+      - recon_data:/app/extensions/bank-reconciliation/data
     security_opt:
       - no-new-privileges:true
 

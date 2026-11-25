@@ -1,47 +1,91 @@
-# SAP Business One Web Client — Bank Reconciliation Extension (MT940 & Norma 43)
+# SAP Business One Web Client Extensions
 
-An on-premise **SAP Business One (SAP HANA) Web Client** extension for **SWIFT MT940** and **Norma 43 (AEB Cuaderno 43)** bank statement ingestion, HANA-accelerated match suggestions, and one-click Service Layer reconciliation.
+A monorepo of on-premise **SAP Business One (SAP HANA) Web Client** extensions. Each extension is self-contained under [`extensions/`](extensions/), has its own MTA descriptor and version, and is packaged separately as an `.mtar` for the **SAP B1 Extension Manager**. All extensions share one npm workspace, toolchain and lockfile.
 
-## Architecture & Security Highlights
+## Extensions
 
-* **100% Internal / Air-Gapped On-Premise:** Zero third-party cloud or internet traffic required.
-* **Generic Banking Standards:** Supports any bank exporting standard **SWIFT MT940** (`.mt940`, `.sta`, `.940`) or **Norma 43 / AEB Cuaderno 43** (`.n43`, `.c43`, `.aeb`, `.txt`) statements.
-* **Direct Read-Only SAP HANA (`@sap/hana-client`):** Sub-10ms `SELECT` queries using a dedicated restricted HANA user (`B1_RECON_RO`) created via `sql/01_create_hana_readonly_user.sql` (physically incapable of `INSERT`/`UPDATE`/`DELETE`).
-* **Strict SAP B1 Service Layer Writes:** All postings (`IncomingPayments`, `VendorPayments`, `BankPages`, and `ExternalReconciliationsService_Reconcile`) run through the official Service Layer with resumable crash recovery.
-* **Native SAP Fiori Horizon UI:** Built with React + `@ui5/webcomponents-react` (`sap_horizon` theme) to blend seamlessly inside the SAP B1 10.0 Web Client.
-* **Mathematical Balance & Idempotency Verification:** Verifies `Opening + Credits - Debits == Closing` (and Norma 43 Record `33` control totals) and deduplicates overlapping statements automatically.
+| Extension | Description | Type |
+| --- | --- | --- |
+| [bank-reconciliation](extensions/bank-reconciliation/README.md) | SWIFT MT940 & Norma 43 statement import, HANA-backed match suggestions, Service Layer reconciliation | SPA + Node backend |
+| [delivery-to-invoice](extensions/delivery-to-invoice/README.md) | Automatic & manual Delivery Note (`ODLN`) to A/R Invoice (`OINV`) conversion with PDF generation and customer email dispatch | SPA + Node backend |
 
----
+> Run `npm run list` to print every extension with its version.
 
-## Quick Start (Local Development / Mock SAP HANA Mode)
+## Repository layout
 
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Run automated test suite (MT940, Norma 43, Vault, Matching Engine, Crash Recovery)
-npm test
-
-# 3. Launch Backend API (:4010) + SAP Fiori Web Client UI (:5173)
-npm run dev
+```
+.
+├── package.json              # npm workspaces root + cross-extension scripts
+├── tsconfig.base.json        # shared TypeScript compiler settings
+├── scripts/
+│   ├── ext.mjs               # run an npm script across one/all extensions
+│   ├── new-extension.mjs     # scaffold a new extension
+│   └── build-mtar.mjs        # generic SPA → .mtar packager
+└── extensions/
+    └── <extension-name>/
+        ├── package.json      # extension scripts: dev, build, build:mtar, test, typecheck
+        ├── mta.yaml          # MTA ID, version, provider
+        ├── README.md         # extension docs
+        └── packages/
+            ├── frontend/     # React + UI5 Web Components SPA (required)
+            ├── backend/      # optional Node API
+            └── shared/       # optional types/logic shared by frontend and backend
 ```
 
-Open `http://localhost:5173` and click **"Carregar Exemplos (MT940 + Norma 43)"** (or drag-and-drop `samples/statement_2026_11.mt940` and `samples/statement_2026_11.n43`).
+Workspaces are `extensions/*` (one per extension) and `extensions/*/packages/*` (its packages). Package names are scoped per extension (e.g. `@b1-recon/backend`) so they don't clash.
 
----
+## Prerequisites
 
-## Production Setup (On-Premise SAP HANA + SAP B1 Extension Manager)
+- Node.js 22+ and npm 10+
+- `zip` on the `PATH` (used for `.mtar` packaging)
+- Docker (only for extensions with a backend)
 
-1. **Create Restricted Read-Only HANA User:**
-   Inspect and run `sql/01_create_hana_readonly_user.sql` in SAP HANA Studio / HANA Cockpit (replacing `"SBO_COMPANY_PT"` with your company schema).
-2. **Configure `.env`:**
-   Copy `.env.example` to `.env`, set `B1_MODE=live`, and fill in your internal `HANA_HOST`, `HANA_SCHEMA`, `HANA_READONLY_USER`, and `B1_SERVICE_LAYER_URL`.
-3. **Start the Internal Backend Container:**
-   ```bash
-   docker compose up -d --build
-   ```
-4. **Build `.mtar` Archive for SAP B1 Extension Manager:**
-   ```bash
-   npm run build:mtar
-   ```
-   Upload `mta_archives/pt-bank-reconciliation_1.0.0.mtar` in **SAP Business One Extension Manager** (`https://<b1-server>:40000/ExtensionManager`) and assign it to your company database.
+## Common commands
+
+Run these from the repository root.
+
+```bash
+npm install                                   # install all extensions
+
+# All extensions
+npm run build
+npm run test
+npm run typecheck
+npm run build:mtar
+
+# One extension (by folder)
+npm run dev        -w extensions/bank-reconciliation
+npm run test       -w extensions/bank-reconciliation
+npm run build:mtar -w extensions/bank-reconciliation
+
+# Or run a script on selected extensions only
+node scripts/ext.mjs build bank-reconciliation
+```
+
+Extensions that don't define a given script are skipped.
+
+## Creating a new extension
+
+```bash
+npm run new -- my-extension --title "My Extension" --subtitle "Short tile text" --icon sap-icon://action
+npm install
+npm run dev -w extensions/my-extension          # http://localhost:5173
+```
+
+This creates `extensions/my-extension/` with:
+
+- a React + UI5 frontend (theme detection, CSP-safe fonts) set up like the existing extensions
+- `public/WebClientExtension.json` with the launchpad tile
+- `mta.yaml` (`ID` defaults to the PascalCase name, `provider` to `MARKO`; override with `--provider`)
+- `build:mtar`, which uses [`scripts/build-mtar.mjs`](scripts/build-mtar.mjs) to write `mta_archives/<ID>_<version>.mtar`
+
+Then add a row for it to the [Extensions](#extensions) table above.
+
+**Need a backend?** Add `packages/backend` (and `packages/shared` if needed) inside the extension, give them a scope like `@b1-<name>/…`, and extend the extension's `package.json` scripts. Use [bank-reconciliation](extensions/bank-reconciliation/) as the reference (Fastify API, Dockerfile, docker-compose).
+
+## Conventions
+
+- **Self-contained:** everything specific to an extension (config, `.env`, samples, SQL, Docker files) lives in its own folder. Don't import code from another extension. If code needs to be shared, promote it to a top-level package first.
+- **Versioning:** bump `version` in the extension's `mta.yaml` and `package.json` before each upload. Extension Manager rejects re-uploads of the same version.
+- **Secrets:** each extension keeps its own `.env` (ignored by git) next to an `.env.example`.
+- **Deployment:** upload `extensions/<name>/mta_archives/*.mtar` at `https://<b1-server>:40000/ExtensionManager` and assign it to the company database.

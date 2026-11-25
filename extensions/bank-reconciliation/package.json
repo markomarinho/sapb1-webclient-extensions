@@ -1,0 +1,14 @@
+{
+  "name": "bank-reconciliation",
+  "version": "1.0.1",
+  "private": true,
+  "description": "Bank Reconciliation (SWIFT MT940 & Norma 43) for the SAP B1 Web Client",
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c cyan,green \"npm run dev --prefix packages/backend\" \"npm run dev --prefix packages/frontend\"",
+    "build": "npm run build --prefix packages/shared && npm run build --prefix packages/backend && npm run build --prefix packages/frontend",
+    "build:mtar": "npm run build && node scripts/build-mtar.mjs",
+    "start": "node packages/backend/dist/server.js",
+    "test": "npm run build --prefix packages/shared && npm run test --prefix packages/backend",
+    "typecheck": "npm run build --prefix packages/shared && npm run typecheck --prefix packages/backend && npm run typecheck --prefix packages/frontend"
+  }
+}

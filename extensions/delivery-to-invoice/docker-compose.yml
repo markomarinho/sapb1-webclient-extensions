@@ -1,0 +1,18 @@
+services:
+  b1-d2i-backend:
+    build:
+      context: ../..
+      dockerfile: extensions/delivery-to-invoice/Dockerfile
+    container_name: sap-b1-delivery-to-invoice
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4020:4020"
+    env_file:
+      - .env
+    volumes:
+      - d2i_data:/app/extensions/delivery-to-invoice/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  d2i_data:
