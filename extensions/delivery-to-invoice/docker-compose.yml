@@ -14,5 +14,17 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Same-origin proxy so the Web Client CSP allows the backend. Opt-in: docker compose --profile proxy up -d
+  # Requires the Web Client moved to :8443 and certs in proxy/certs (fullchain.pem, privkey.pem).
+  b1-d2i-proxy:
+    profiles: ["proxy"]
+    image: nginx:stable-alpine
+    container_name: sap-b1-d2i-proxy
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./proxy/certs:/certs:ro
+
 volumes:
   d2i_data:
