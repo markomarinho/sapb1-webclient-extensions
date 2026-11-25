@@ -61,7 +61,14 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add extensions/*/mta.yaml extensions/*/package.json
           git commit -m "chore: bump extension versions [skip ci]"
-          git push
+          # main may have moved while this job was building: rebase the bump commit onto it and retry
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase origin main && git push && exit 0
+            echo "Push attempt $attempt failed, retrying..."
+            sleep $((attempt * 3))
+          done
+          echo "Could not push the version bump" >&2
+          exit 1
 
       # One GitHub Release per extension version, with the .mtar attached as a plain file
       # (no zip to extract). Tag: <extension>-v<version>, e.g. delivery-to-invoice-v1.0.3
