@@ -27,7 +27,13 @@ import {
   Tag,
   Text,
 } from '@ui5/webcomponents-react';
-import { api, formatMoney } from './api';
+import {
+  api,
+  canImportLocalSettings,
+  dismissLocalSettingsImport,
+  formatMoney,
+  importLocalSettingsToBackend,
+} from './api';
 import { AuditLogDialog } from './components/AuditLogDialog';
 import { DeliveryDetailsDialog } from './components/DeliveryDetailsDialog';
 import { EmailPreviewDialog } from './components/EmailPreviewDialog';
@@ -79,6 +85,7 @@ export function App() {
     design: 'Positive' | 'Negative' | 'Information';
     text: string;
   } | null>(null);
+  const [importOffer, setImportOffer] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
   const [previewEmail, setPreviewEmail] = useState<SentEmailPreview | null>(null);
@@ -99,6 +106,8 @@ export function App() {
         api.getSettings(),
       ]);
       setSummary(dash);
+      setImportOffer(canImportLocalSettings());
+      if (dash.nativeWebClient) setBanner((b) => b ?? { design: 'Information', text: t.nativeModeNotice });
       setDeliveries(delRes.deliveries);
       setConversions(convRes.conversions);
       setEmails(emailRes.emails);
@@ -117,7 +126,7 @@ export function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t.nativeModeNotice]);
 
   useEffect(() => {
     void refreshAll();
@@ -664,6 +673,42 @@ export function App() {
         <div style={{ padding: '14px 36px 0 36px' }}>
           <MessageStrip design={banner.design} onClose={() => setBanner(null)}>
             {banner.text}
+          </MessageStrip>
+        </div>
+      )}
+
+      {importOffer && (
+        <div style={{ padding: '14px 36px 0 36px' }}>
+          <MessageStrip design="Information" hideCloseButton>
+            {t.importLocalSettingsPrompt}{' '}
+            <Button
+              design="Emphasized"
+              onClick={() => {
+                importLocalSettingsToBackend()
+                  .then(() => {
+                    setImportOffer(false);
+                    setBanner({ design: 'Positive', text: t.importLocalSettingsDone });
+                    void refreshAll();
+                  })
+                  .catch((err) =>
+                    setBanner({
+                      design: 'Negative',
+                      text: err instanceof Error ? err.message : String(err),
+                    })
+                  );
+              }}
+            >
+              {t.importLocalSettingsBtn}
+            </Button>{' '}
+            <Button
+              design="Transparent"
+              onClick={() => {
+                dismissLocalSettingsImport();
+                setImportOffer(false);
+              }}
+            >
+              {t.importLocalSettingsSkip}
+            </Button>
           </MessageStrip>
         </div>
       )}

@@ -40,4 +40,8 @@ Open `http://localhost:5174`. In mock mode (`B1_MODE=mock`, `EMAIL_MODE=mock`), 
    ```bash
    npm run build:mtar -w extensions/delivery-to-invoice
    ```
+   **Web Client mode (default, no backend needed):** inside the Web Client the extension calls the same-origin Service Layer (`/b1s/v1`) with the user's own session, so it works under the Web Client's CSP. It lists open delivery notes, validates them and creates the A/R invoices. Settings, history and the audit log are kept in the browser's `localStorage`. Email sending, PDF generation and the scheduler are **not available** in this mode.
+
+   **Backend mode (email + scheduler):** open the extension once with `?apiUrl=https://<backend-host>:4020` (persisted in `localStorage`; an empty `?apiUrl=` switches back to Web Client mode) and add the Web Client origin to `CORS_ORIGIN`. The Web Client's CSP must allow that host in `connect-src`, so serve the backend over HTTPS behind the same host/reverse proxy if the browser blocks it.
+4. **Upload:**
    Upload `extensions/delivery-to-invoice/mta_archives/Delivery-To-Invoice_<version>.mtar` in **SAP Business One Extension Manager** (`https://<b1-server>:40000/ExtensionManager`) and assign it to your company database.

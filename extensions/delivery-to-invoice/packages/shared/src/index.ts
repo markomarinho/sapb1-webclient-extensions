@@ -213,6 +213,8 @@ export interface DashboardSummary {
   nextRunAt: string | null;
   b1Mode: 'mock' | 'live';
   emailMode: 'mock' | 'smtp';
+  /** True when running inside the SAP B1 Web Client without a backend (no email/scheduler). */
+  nativeWebClient?: boolean;
 }
 
 export interface ConvertDeliveriesRequest {
