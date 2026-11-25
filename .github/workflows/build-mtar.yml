@@ -81,9 +81,20 @@ jobs:
             version=$(sed -n 's/^version:[[:space:]]*"\{0,1\}\([^"[:space:]]*\)"\{0,1\}[[:space:]]*$/\1/p' "extensions/$ext/mta.yaml" | head -n1)
             file=$(ls extensions/$ext/mta_archives/*.mtar)
             tag="$ext-v$version"
-            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
-            gh release create "$tag" "$file" \
-              --target "$(git rev-parse HEAD)" \
-              --title "$ext $version" \
-              --notes "SAP B1 Web Client extension archive for Extension Manager. Download the .mtar and upload it as-is."
+            published=false
+            for attempt in 1 2 3 4 5; do
+              if gh release view "$tag" >/dev/null 2>&1; then
+                # re-run of the same version: just replace the attached file
+                gh release upload "$tag" "$file" --clobber && published=true && break
+              else
+                gh release create "$tag" "$file" \
+                  --target "$(git rev-parse HEAD)" \
+                  --title "$ext $version" \
+                  --notes "SAP B1 Web Client extension archive for Extension Manager. Download the .mtar and upload it as-is." \
+                  && published=true && break
+              fi
+              echo "Release $tag attempt $attempt failed (GitHub API error?), retrying..."
+              sleep $((attempt * 5))
+            done
+            $published || { echo "Could not publish release $tag" >&2; exit 1; }
           done
