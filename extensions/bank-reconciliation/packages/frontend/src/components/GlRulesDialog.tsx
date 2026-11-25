@@ -90,14 +90,16 @@ export const GlRulesDialog: React.FC<Props> = ({ open, onClose, onUpdated }) => 
     <Dialog
       open={open}
       headerText="Regras Automáticas de Contabilização G/L (Comissões, Imposto do Selo, Juros)"
-      style={{ width: '780px', maxWidth: '95vw' }}
+      onClose={onClose}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', width: '100%' }}>
-          <Button onClick={onClose}>Fechar</Button>
+          <Button design="Emphasized" onClick={onClose}>
+            Fechar
+          </Button>
         </div>
       }
     >
-      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ width: '780px', maxWidth: '88vw', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ fontSize: '13px', color: '#556b82' }}>
           Quando a descrição de um movimento bancário contém uma das palavras-chave abaixo, o motor sugere
           automaticamente o lançamento direto na Conta do Razão (SAP B1 <code>DocType = rAccount</code>).

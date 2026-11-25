@@ -91,7 +91,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
     <Dialog
       open={open}
       headerText="Configuração & Diagnóstico de Ligação (SAP HANA + Service Layer)"
-      style={{ width: '740px', maxWidth: '95vw' }}
+      onClose={onClose}
       footer={
         <div
           style={{
@@ -110,9 +110,6 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
             Guardar &amp; Testar Ligação
           </Button>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Button design="Transparent" onClick={onClose} disabled={busy}>
-              Cancelar
-            </Button>
             <Button
               design="Emphasized"
               disabled={busy}
@@ -120,11 +117,24 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
             >
               Guardar &amp; Aplicar
             </Button>
+            <Button design="Transparent" onClick={onClose} disabled={busy}>
+              Cancelar
+            </Button>
           </div>
         </div>
       }
     >
-      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px' }}>
+      <div
+        style={{
+          width: '740px',
+          maxWidth: '88vw',
+          padding: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+          fontSize: '13px',
+        }}
+      >
         {/* Backend API Endpoint (when SPA runs inside SAP B1 Web Client on different port) */}
         <div
           style={{

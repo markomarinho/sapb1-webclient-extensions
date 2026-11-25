@@ -25,14 +25,16 @@ export const AuditLogDialog: React.FC<Props> = ({ open, onClose }) => {
     <Dialog
       open={open}
       headerText="Registo de Auditoria & Segurança (SAP B1 Reconciliação)"
-      style={{ width: '780px', maxWidth: '95vw' }}
+      onClose={onClose}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', width: '100%' }}>
-          <Button onClick={onClose}>Fechar</Button>
+          <Button design="Emphasized" onClick={onClose}>
+            Fechar
+          </Button>
         </div>
       }
     >
-      <div style={{ padding: '14px', maxHeight: '460px', overflowY: 'auto' }}>
+      <div style={{ width: '760px', maxWidth: '88vw', padding: '14px', maxHeight: '460px', overflowY: 'auto' }}>
         {loading ? (
           <BusyIndicator active size="M" />
         ) : logs.length === 0 ? (

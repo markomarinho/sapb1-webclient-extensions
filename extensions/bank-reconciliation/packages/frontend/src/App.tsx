@@ -4,13 +4,11 @@ import {
   Button,
   BusyIndicator,
   Input,
-  Label,
   MessageStrip,
   ObjectStatus,
   Option,
   Select,
   Tag,
-  Title,
 } from '@ui5/webcomponents-react';
 import { api, formatEur, isUsingNativeWebClientB1s } from './api';
 import { AuditLogDialog } from './components/AuditLogDialog';
@@ -83,6 +81,16 @@ export const App: React.FC = () => {
       return conf < 50;
     });
   }, [lines, confidenceFilter]);
+
+  const autoCoveragePct = useMemo(() => {
+    if (!summary) return 0;
+    const total = summary.totalUnreconciled + summary.reconciledCount;
+    if (total === 0) return 100;
+    return Math.min(
+      100,
+      Math.round(((summary.reconciledCount + summary.highConfidenceReady) / total) * 100)
+    );
+  }, [summary]);
 
   const handleLoadSamples = async () => {
     setBatchBusy(true);
@@ -181,34 +189,44 @@ export const App: React.FC = () => {
         flexDirection: 'column',
         background: '#f5f6f7',
         color: '#1d2d3e',
+        fontFamily: '"72", "72full", Arial, Helvetica, sans-serif',
+        paddingBottom: '68px',
       }}
     >
-      {/* SAP Business One Web Client DynamicPage Header */}
+      {/* SAP Fiori Horizon ObjectPage Header */}
       <header
         style={{
           background: '#ffffff',
-          borderBottom: '1px solid #d9d9d9',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+          position: 'relative',
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
         }}
       >
-        {/* DynamicPage Title Bar */}
+        {/* Top ObjectPage Title Bar */}
         <div
           style={{
-            padding: '12px 24px',
+            padding: '18px 36px 8px 36px',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             flexWrap: 'wrap',
             gap: '12px',
-            borderBottom: headerExpanded ? '1px solid #ededed' : 'none',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Title level="H4" style={{ margin: 0 }}>
-              Processar Extratos Bancários Externos
-            </Title>
-            <span style={{ color: '#d9d9d9' }}>|</span>
-            <span style={{ fontSize: '13px', color: '#556b82', fontWeight: 500 }}>Vista Padrão</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: '21px',
+                fontWeight: 700,
+                color: '#1d2d3e',
+                letterSpacing: '-0.2px',
+              }}
+            >
+              Processar extratos bancários externos
+            </h1>
+            <span style={{ fontSize: '13px', color: '#556b82' }}>
+              SWIFT MT940 &amp; Norma 43
+            </span>
             {summary && (
               <Tag
                 design={summary.mode === 'live' ? 'Positive' : 'Set2'}
@@ -224,438 +242,701 @@ export const App: React.FC = () => {
             )}
           </div>
 
-          {/* Native SAP B1 Web Client Header Action Toolbar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <Button design="Emphasized" onClick={() => setUploadOpen(true)}>
-              Importar Extrato
+          {/* Right Header Action Links (SAP Horizon style) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+            <Button design="Transparent" onClick={() => setUploadOpen(true)}>
+              Importar extrato
             </Button>
             <Button
-              design="Default"
-              disabled={batchBusy || !summary || summary.highConfidenceReady === 0}
-              onClick={() => void handleBatchApprove()}
+              design="Transparent"
+              onClick={() => void handleLoadSamples()}
+              disabled={batchBusy}
             >
-              Reconciliar Automáticos ({summary?.highConfidenceReady ?? 0})
+              Carregar demonstração
             </Button>
             <Button design="Transparent" onClick={() => setGlRulesOpen(true)}>
-              Regras de Contabilização G/L
-            </Button>
-            <Button design="Transparent" onClick={() => void handleLoadSamples()} disabled={batchBusy}>
-              Carregar Demonstração
+              Regras de contabilização G/L
             </Button>
             <Button design="Transparent" onClick={() => setAuditOpen(true)}>
-              Registo de Auditoria
+              Registo de auditoria
             </Button>
             <Button design="Transparent" onClick={() => setConnOpen(true)}>
-              {isUsingNativeWebClientB1s() ? 'Diagnóstico' : 'Ligação'}
+              {isUsingNativeWebClientB1s() ? 'Diagnóstico' : 'Editar ligação SAP B1'}
             </Button>
-            <Button design="Transparent" onClick={() => setHeaderExpanded((v) => !v)}>
-              {headerExpanded ? 'Ocultar Cabeçalho ▲' : 'Mostrar Cabeçalho ▼'}
+            <Button
+              design="Transparent"
+              onClick={() => void refreshAll()}
+              disabled={loading}
+            >
+              Atualizar
             </Button>
           </div>
         </div>
 
-        {/* DynamicPage Expandable FilterBar & Analytical Facets */}
-        {headerExpanded && (
-          <div style={{ padding: '14px 24px 16px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* SAP B1 Web Client Standard FilterBar */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr)) auto',
-                gap: '12px',
-                alignItems: 'end',
-              }}
-            >
-              <div>
-                <Label style={filterLabelStyle}>Pesquisar</Label>
-                <Input
-                  placeholder="Descrição, NIF, IBAN, Multibanco, Nº Doc, Valor..."
-                  value={search}
-                  style={{ width: '100%' }}
-                  onInput={(e) => setSearch((e.target as unknown as { value: string }).value)}
-                />
-              </div>
-
-              <div>
-                <Label style={filterLabelStyle}>Conta do Banco da Empresa:</Label>
-                <Select
-                  style={{ width: '100%' }}
-                  onChange={(e) => {
-                    const bankId = e.detail.selectedOption?.getAttribute('data-bank-id');
-                    if (bankId) setSelectedBankId(bankId);
-                  }}
-                >
-                  <Option data-bank-id="ALL" selected={selectedBankId === 'ALL'}>
-                    Todas ({houseBanks.length})
-                  </Option>
-                  {houseBanks.map((hb) => (
-                    <Option key={hb.id} data-bank-id={hb.id} selected={selectedBankId === hb.id}>
-                      {hb.bankCode} — {hb.accountLabel} (G/L {hb.glAccountCode})
-                    </Option>
-                  ))}
-                </Select>
-              </div>
-
-              <div>
-                <Label style={filterLabelStyle}>Estado do Movimento:</Label>
-                <Select
-                  style={{ width: '100%' }}
-                  onChange={(e) => {
-                    const st = e.detail.selectedOption?.getAttribute('data-status') as
-                      | 'PENDING'
-                      | 'RECONCILED'
-                      | 'IGNORED'
-                      | 'ALL'
-                      | undefined;
-                    if (st) setStatusGroup(st);
-                  }}
-                >
-                  <Option data-status="PENDING" selected={statusGroup === 'PENDING'}>
-                    Em Aberto / Por Reconciliar
-                  </Option>
-                  <Option data-status="RECONCILED" selected={statusGroup === 'RECONCILED'}>
-                    Reconciliados
-                  </Option>
-                  <Option data-status="IGNORED" selected={statusGroup === 'IGNORED'}>
-                    Ignorados
-                  </Option>
-                  <Option data-status="ALL" selected={statusGroup === 'ALL'}>
-                    Todos
-                  </Option>
-                </Select>
-              </div>
-
-              <div>
-                <Label style={filterLabelStyle}>Nível de Confiança:</Label>
-                <Select
-                  style={{ width: '100%' }}
-                  onChange={(e) => {
-                    const cf = e.detail.selectedOption?.getAttribute('data-conf') as
-                      | 'ALL'
-                      | 'HIGH'
-                      | 'REVIEW'
-                      | 'NONE'
-                      | undefined;
-                    if (cf) setConfidenceFilter(cf);
-                  }}
-                >
-                  <Option data-conf="ALL" selected={confidenceFilter === 'ALL'}>
-                    Todos
-                  </Option>
-                  <Option data-conf="HIGH" selected={confidenceFilter === 'HIGH'}>
-                    Automático / Elevada (≥85%)
-                  </Option>
-                  <Option data-conf="REVIEW" selected={confidenceFilter === 'REVIEW'}>
-                    Revisão Recomendada (50%–84%)
-                  </Option>
-                  <Option data-conf="NONE" selected={confidenceFilter === 'NONE'}>
-                    Sem Correspondência Direta
-                  </Option>
-                </Select>
-              </div>
-
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <Button design="Emphasized" onClick={() => void refreshAll()} disabled={loading}>
-                  Ir
-                </Button>
-                {(search || selectedBankId !== 'ALL' || statusGroup !== 'PENDING' || confidenceFilter !== 'ALL') && (
-                  <Button
-                    design="Transparent"
-                    onClick={() => {
-                      setSearch('');
-                      setSelectedBankId('ALL');
-                      setStatusGroup('PENDING');
-                      setConfidenceFilter('ALL');
-                    }}
-                  >
-                    Repor Filtros
-                  </Button>
-                )}
-              </div>
+        {/* ObjectPage Header Facets (matches SAP B1 Web Client ObjectPage header facets) */}
+        {headerExpanded && summary && (
+          <div
+            style={{
+              padding: '10px 36px 22px 36px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '38px',
+              alignItems: 'flex-start',
+            }}
+          >
+            <div style={fioriFacetStyle}>
+              <span style={fioriFacetLabelStyle}>Movimentos em aberto</span>
+              <span style={fioriFacetValueStyle}>{summary.totalUnreconciled} movimento(s)</span>
+              <span style={{ fontSize: '12px', color: '#556b82' }}>
+                Reconciliados: {summary.reconciledCount}
+              </span>
             </div>
 
-            {/* SAP Fiori Object Header Facets (KPIs) */}
-            {summary && (
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '24px',
-                  paddingTop: '10px',
-                  borderTop: '1px solid #f0f0f0',
-                }}
-              >
-                <div style={facetItemStyle}>
-                  <span style={facetLabelStyle}>Movimentos em Aberto</span>
-                  <span style={{ fontSize: '18px', fontWeight: 700, color: '#1d2d3e' }}>
-                    {summary.totalUnreconciled}
-                  </span>
+            <div style={fioriFacetStyle}>
+              <span style={fioriFacetLabelStyle}>Prontos p/ automático (≥85%)</span>
+              <span style={{ ...fioriFacetValueStyle, color: '#107e3e' }}>
+                {summary.highConfidenceReady} movimento(s)
+              </span>
+              <span style={{ fontSize: '12px', color: '#556b82' }}>
+                Revisão manual: {summary.needsReview}
+              </span>
+            </div>
+
+            <div style={fioriFacetStyle}>
+              <span style={fioriFacetLabelStyle}>Recebimentos pendentes</span>
+              <span style={{ ...fioriFacetValueStyle, color: '#107e3e' }}>
+                +{formatEur(summary.unreconciledInflowEur)}
+              </span>
+              <span style={{ fontSize: '12px', color: '#556b82' }}>Créditos bancários</span>
+            </div>
+
+            <div style={fioriFacetStyle}>
+              <span style={fioriFacetLabelStyle}>Pagamentos pendentes</span>
+              <span style={{ ...fioriFacetValueStyle, color: '#bb0000' }}>
+                -{formatEur(summary.unreconciledOutflowEur)}
+              </span>
+              <span style={{ fontSize: '12px', color: '#556b82' }}>Débitos bancários</span>
+            </div>
+
+            {/* SAP Fiori Micro-Progress Bar Facet */}
+            <div style={{ ...fioriFacetStyle, minWidth: '185px' }}>
+              <span style={fioriFacetLabelStyle}>Cobertura de reconciliação</span>
+              <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#1d2d3e' }}>
+                {autoCoveragePct}%
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                <div
+                  style={{
+                    flex: 1,
+                    height: '6px',
+                    borderRadius: '4px',
+                    background: '#e2ebd7',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${autoCoveragePct}%`,
+                      height: '100%',
+                      background: autoCoveragePct >= 70 ? '#256f3a' : '#e76500',
+                      borderRadius: '4px',
+                    }}
+                  />
                 </div>
-                <div style={facetDividerStyle}>
-                  <span style={facetLabelStyle}>Prontos p/ Automático (≥85%)</span>
-                  <span style={{ fontSize: '18px', fontWeight: 700, color: '#107e3e' }}>
-                    {summary.highConfidenceReady}
-                  </span>
-                </div>
-                <div style={facetDividerStyle}>
-                  <span style={facetLabelStyle}>Revisão Manual</span>
-                  <span style={{ fontSize: '18px', fontWeight: 700, color: '#e9730c' }}>
-                    {summary.needsReview}
-                  </span>
-                </div>
-                <div style={facetDividerStyle}>
-                  <span style={facetLabelStyle}>Recebimentos Pendentes</span>
-                  <span style={{ fontSize: '16px', fontWeight: 700, color: '#107e3e' }}>
-                    +{formatEur(summary.unreconciledInflowEur)}
-                  </span>
-                </div>
-                <div style={facetDividerStyle}>
-                  <span style={facetLabelStyle}>Pagamentos Pendentes</span>
-                  <span style={{ fontSize: '16px', fontWeight: 700, color: '#bb0000' }}>
-                    -{formatEur(summary.unreconciledOutflowEur)}
-                  </span>
-                </div>
-                <div style={facetDividerStyle}>
-                  <span style={facetLabelStyle}>Reconciliados</span>
-                  <span style={{ fontSize: '18px', fontWeight: 700, color: '#0070f2' }}>
-                    {summary.reconciledCount}
-                  </span>
-                </div>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    background: autoCoveragePct >= 70 ? '#256f3a' : '#e76500',
+                    color: '#ffffff',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                  }}
+                >
+                  {autoCoveragePct >= 70 ? '✓' : '!'}
+                </span>
               </div>
-            )}
+            </div>
           </div>
         )}
+
+        {/* Center Collapse Chevron Divider Bar (straddles divider line with overflow: visible) */}
+        <div
+          style={{
+            position: 'relative',
+            height: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#ffffff',
+            overflow: 'visible',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: '50%',
+              borderTop: '1px solid #e5e8eb',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setHeaderExpanded((v) => !v)}
+            title={headerExpanded ? 'Ocultar cabeçalho' : 'Expandir cabeçalho'}
+            style={{
+              position: 'relative',
+              zIndex: 2,
+              width: '28px',
+              height: '22px',
+              borderRadius: '6px',
+              border: '1px solid #b8c2cc',
+              background: '#ffffff',
+              color: '#0064d9',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              fontWeight: 700,
+              lineHeight: 1,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+            }}
+          >
+            {headerExpanded ? '⌃' : '⌄'}
+          </button>
+        </div>
+
+        {/* Anchor Tab Bar (exact SAP Horizon ObjectPage AnchorBar) */}
+        <div
+          style={{
+            borderBottom: '2px solid #0032a5',
+            padding: '2px 36px 0 36px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '28px',
+            background: '#ffffff',
+            overflowX: 'auto',
+          }}
+        >
+
+          <button
+            type="button"
+            onClick={() => {
+              setStatusGroup('PENDING');
+              setConfidenceFilter('ALL');
+            }}
+            style={anchorTabButtonStyle(statusGroup === 'PENDING' && confidenceFilter === 'ALL')}
+          >
+            Em aberto / Por reconciliar ({summary?.totalUnreconciled ?? 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusGroup('PENDING');
+              setConfidenceFilter('HIGH');
+            }}
+            style={anchorTabButtonStyle(statusGroup === 'PENDING' && confidenceFilter === 'HIGH')}
+          >
+            Prontos p/ automático ≥85% ({summary?.highConfidenceReady ?? 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusGroup('PENDING');
+              setConfidenceFilter('REVIEW');
+            }}
+            style={anchorTabButtonStyle(statusGroup === 'PENDING' && confidenceFilter === 'REVIEW')}
+          >
+            Revisão recomendada ({summary?.needsReview ?? 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusGroup('RECONCILED');
+              setConfidenceFilter('ALL');
+            }}
+            style={anchorTabButtonStyle(statusGroup === 'RECONCILED')}
+          >
+            Reconciliados ({summary?.reconciledCount ?? 0})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusGroup('IGNORED');
+              setConfidenceFilter('ALL');
+            }}
+            style={anchorTabButtonStyle(statusGroup === 'IGNORED')}
+          >
+            Ignorados
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusGroup('ALL');
+              setConfidenceFilter('ALL');
+            }}
+            style={anchorTabButtonStyle(statusGroup === 'ALL')}
+          >
+            Todos os movimentos
+          </button>
+        </div>
       </header>
 
       {banner && (
-        <div style={{ padding: '10px 24px 0 24px' }}>
+        <div style={{ padding: '14px 36px 0 36px' }}>
           <MessageStrip design={banner.type} onClose={() => setBanner(null)}>
             {banner.text}
           </MessageStrip>
         </div>
       )}
 
-      {/* SAP Fiori FlexibleColumnLayout Workspace (List Report Table + Object Page Inspector) */}
-      <main
-        style={{
-          flex: 1,
-          padding: '12px 24px 20px 24px',
-          display: 'grid',
-          gridTemplateColumns: selectedLine ? '1.1fr 1fr' : '1fr',
-          gap: '12px',
-          alignItems: 'start',
-        }}
-      >
-        {/* Left Column: SAP B1 Web Client List Report Table */}
-        <section
-          style={{
-            background: '#ffffff',
-            border: '1px solid #d9d9d9',
-            borderRadius: '4px',
-            overflow: 'hidden',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-          }}
-        >
-          {/* Fiori Table Header Toolbar */}
-          <div
+      {/* Main SAP Horizon ObjectPage Section Canvas */}
+      <main style={{ flex: 1, padding: '18px 36px 28px 36px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div>
+          <h2
             style={{
-              padding: '8px 16px',
-              borderBottom: '1px solid #e5e5e5',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              background: '#ffffff',
+              margin: '0 0 12px 4px',
+              fontSize: '16px',
+              fontWeight: 700,
+              color: '#1d2d3e',
             }}
           >
-            <Title level="H5" style={{ margin: 0, fontSize: '15px' }}>
-              Linhas do Extrato Bancário ({displayedLines.length})
-            </Title>
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-              <Button design="Transparent" onClick={() => setUploadOpen(true)}>
-                Importar Ficheiro
-              </Button>
-              <Button
-                design="Transparent"
-                disabled={displayedLines.length === 0}
-                onClick={handleExportCsv}
-              >
-                Exportar
-              </Button>
-              <Button design="Transparent" onClick={() => void refreshAll()} disabled={loading}>
-                Atualizar
-              </Button>
-            </div>
-          </div>
+            Geral
+          </h2>
 
-          {loading ? (
-            <div style={{ padding: '48px', textAlign: 'center' }}>
-              <BusyIndicator active size="M" />
-            </div>
-          ) : displayedLines.length === 0 ? (
-            <div style={{ padding: '44px 24px', textAlign: 'center', color: '#556b82' }}>
-              <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '6px', color: '#1d2d3e' }}>
-                Não foram encontrados movimentos bancários
-              </div>
-              <div style={{ fontSize: '13px', marginBottom: '16px' }}>
-                Importe um ficheiro de extrato bancário (SWIFT MT940 ou Norma 43) ou ajuste os filtros no cabeçalho.
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                <Button design="Emphasized" onClick={() => setUploadOpen(true)}>
-                  Importar Extrato
-                </Button>
-                <Button design="Default" onClick={() => void handleLoadSamples()}>
-                  Carregar Dados de Demonstração
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                <thead>
-                  <tr
-                    style={{
-                      background: '#f5f6f7',
-                      borderBottom: '1px solid #d9d9d9',
-                      textAlign: 'left',
-                      color: '#32363a',
-                      fontSize: '12px',
+          {/* Top White Rounded Filter & Selection Card (2-column SAP Horizon Form Grid) */}
+          <div style={horizonWhiteSectionCardStyle}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+                gap: '20px 48px',
+              }}
+            >
+              <div>
+                <div style={fioriSubGroupTitleStyle}>Conta bancária e estado</div>
+                <div style={fioriFormGridStyle}>
+                  <span style={fioriFormLabelStyle}>Banco da empresa:</span>
+                  <Select
+                    style={{ width: '100%' }}
+                    onChange={(e) => {
+                      const bankId = e.detail.selectedOption?.getAttribute('data-bank-id');
+                      if (bankId) setSelectedBankId(bankId);
                     }}
                   >
-                    <th style={{ padding: '9px 12px', fontWeight: 600 }}>Data</th>
-                    <th style={{ padding: '9px 10px', fontWeight: 600 }}>Conta</th>
-                    <th style={{ padding: '9px 12px', fontWeight: 600 }}>Descrição &amp; Parceiro Sugerido</th>
-                    <th style={{ padding: '9px 12px', fontWeight: 600, textAlign: 'right' }}>Montante</th>
-                    <th style={{ padding: '9px 12px', fontWeight: 600 }}>Estado / Sugestão</th>
-                    <th style={{ padding: '9px 8px', width: '18px' }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedLines.map((l) => {
-                    const isSelected = l.id === selectedLineId;
-                    const topSug = l.suggestions?.[0];
-                    const partnerLabel = topSug
-                      ? `${topSug.cardCode ? `${topSug.cardCode} — ` : ''}${
-                          topSug.journalLine?.cardName || topSug.cardName || ''
-                        }`
-                      : '';
-                    return (
-                      <tr
-                        key={l.id}
-                        onClick={() => setSelectedLineId(l.id)}
-                        style={{
-                          cursor: 'pointer',
-                          borderBottom: '1px solid #e5e5e5',
-                          background: isSelected ? '#ebf5fe' : '#ffffff',
-                          borderLeft: isSelected ? '3px solid #0070f2' : '3px solid transparent',
+                    <Option data-bank-id="ALL" selected={selectedBankId === 'ALL'}>
+                      Todas as contas ({houseBanks.length})
+                    </Option>
+                    {houseBanks.map((hb) => (
+                      <Option key={hb.id} data-bank-id={hb.id} selected={selectedBankId === hb.id}>
+                        {hb.bankCode} — {hb.accountLabel} (G/L {hb.glAccountCode})
+                      </Option>
+                    ))}
+                  </Select>
+
+                  <span style={fioriFormLabelStyle}>Estado do movimento:</span>
+                  <Select
+                    style={{ width: '100%' }}
+                    onChange={(e) => {
+                      const st = e.detail.selectedOption?.getAttribute('data-status') as
+                        | 'PENDING'
+                        | 'RECONCILED'
+                        | 'IGNORED'
+                        | 'ALL'
+                        | undefined;
+                      if (st) setStatusGroup(st);
+                    }}
+                  >
+                    <Option data-status="PENDING" selected={statusGroup === 'PENDING'}>
+                      Em aberto / Por reconciliar
+                    </Option>
+                    <Option data-status="RECONCILED" selected={statusGroup === 'RECONCILED'}>
+                      Reconciliados
+                    </Option>
+                    <Option data-status="IGNORED" selected={statusGroup === 'IGNORED'}>
+                      Ignorados
+                    </Option>
+                    <Option data-status="ALL" selected={statusGroup === 'ALL'}>
+                      Todos
+                    </Option>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <div style={fioriSubGroupTitleStyle}>Filtros de pesquisa e correspondência</div>
+                <div style={fioriFormGridStyle}>
+                  <span style={fioriFormLabelStyle}>Procurar movimento:</span>
+                  <Input
+                    placeholder="Descrição, NIF, IBAN, Multibanco, Nº Doc, Valor..."
+                    value={search}
+                    style={{ width: '100%' }}
+                    onInput={(e) => setSearch((e.target as unknown as { value: string }).value)}
+                  />
+
+                  <span style={fioriFormLabelStyle}>Nível de confiança:</span>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <Select
+                      style={{ flex: 1 }}
+                      onChange={(e) => {
+                        const cf = e.detail.selectedOption?.getAttribute('data-conf') as
+                          | 'ALL'
+                          | 'HIGH'
+                          | 'REVIEW'
+                          | 'NONE'
+                          | undefined;
+                        if (cf) setConfidenceFilter(cf);
+                      }}
+                    >
+                      <Option data-conf="ALL" selected={confidenceFilter === 'ALL'}>
+                        Todos
+                      </Option>
+                      <Option data-conf="HIGH" selected={confidenceFilter === 'HIGH'}>
+                        Automático / Elevada (≥85%)
+                      </Option>
+                      <Option data-conf="REVIEW" selected={confidenceFilter === 'REVIEW'}>
+                        Revisão recomendada (50%–84%)
+                      </Option>
+                      <Option data-conf="NONE" selected={confidenceFilter === 'NONE'}>
+                        Sem correspondência direta
+                      </Option>
+                    </Select>
+                    {(search ||
+                      selectedBankId !== 'ALL' ||
+                      statusGroup !== 'PENDING' ||
+                      confidenceFilter !== 'ALL') && (
+                      <Button
+                        design="Transparent"
+                        onClick={() => {
+                          setSearch('');
+                          setSelectedBankId('ALL');
+                          setStatusGroup('PENDING');
+                          setConfidenceFilter('ALL');
                         }}
                       >
-                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
-                          <div style={{ fontWeight: 600, color: '#1d2d3e' }}>{l.bookingDate}</div>
-                          <div style={{ fontSize: '11px', color: '#6a6d70' }}>#{l.lineNumber}</div>
-                        </td>
-                        <td style={{ padding: '9px 10px', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
-                          <div style={{ fontWeight: 600, color: '#1d2d3e' }}>{l.bankCode}</div>
-                          <div style={{ fontSize: '11px', color: '#6a6d70' }}>G/L {l.glAccountCode}</div>
-                        </td>
-                        <td style={{ padding: '9px 12px', verticalAlign: 'middle' }}>
-                          <div
-                            style={{
-                              fontWeight: 500,
-                              color: '#1d2d3e',
-                              maxWidth: '330px',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                            title={l.description}
-                          >
-                            {l.description}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: '11.5px',
-                              color: topSug ? '#0064d9' : '#6a6d70',
-                              maxWidth: '330px',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {partnerLabel || `Ref: ${l.bankReference || '—'}`}
-                          </div>
-                        </td>
-                        <td
-                          style={{
-                            padding: '9px 12px',
-                            textAlign: 'right',
-                            fontWeight: 700,
-                            whiteSpace: 'nowrap',
-                            verticalAlign: 'middle',
-                            color: l.direction === 'CREDIT' ? '#107e3e' : '#bb0000',
-                          }}
-                        >
-                          {l.direction === 'CREDIT' ? '+' : '-'}
-                          {formatEur(l.amount)}
-                        </td>
-                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
-                          {l.status === 'RECONCILED' ? (
-                            <ObjectStatus state="Positive" showDefaultIcon>
-                              Reconciliado
-                            </ObjectStatus>
-                          ) : l.status === 'ERROR' ? (
-                            <ObjectStatus state="Negative" showDefaultIcon>
-                              Erro
-                            </ObjectStatus>
-                          ) : l.status === 'IGNORED' ? (
-                            <ObjectStatus state="None">Ignorado</ObjectStatus>
-                          ) : topSug ? (
-                            <ObjectStatus
-                              state={
-                                topSug.confidence >= 85
-                                  ? 'Positive'
-                                  : topSug.confidence >= 70
-                                    ? 'Critical'
-                                    : 'Information'
-                              }
-                              showDefaultIcon
-                            >
-                              {topSug.confidence}% ({topSug.tier === 'HIGH' ? 'Automático' : 'Rever'})
-                            </ObjectStatus>
-                          ) : (
-                            <ObjectStatus state="None">Manual</ObjectStatus>
-                          )}
-                        </td>
-                        <td
-                          style={{
-                            padding: '9px 10px 9px 0',
-                            color: '#6a6d70',
-                            fontSize: '16px',
-                            textAlign: 'right',
-                            verticalAlign: 'middle',
-                          }}
-                        >
-                          ›
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        Repor
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-          )}
-        </section>
+          </div>
+        </div>
 
-        {/* Right Column: SAP B1 Web Client Object Page Detail Inspector */}
-        {selectedLine && (
-          <SuggestionInspector
-            line={selectedLine}
-            onActionSuccess={(msg) => {
-              setBanner({ type: 'Positive', text: msg });
-              void refreshAll();
+        {/* FlexibleColumnLayout Split Workspace: Statement Lines Table + ObjectPage Detail Inspector */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: selectedLine ? '1.08fr 1fr' : '1fr',
+            gap: '16px',
+            alignItems: 'start',
+          }}
+        >
+          {/* Left Column: Statement Lines Table in White Rounded Section Card */}
+          <section
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e6ebf0',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow: '0 1px 4px rgba(15, 35, 55, 0.05)',
             }}
-          />
-        )}
+          >
+            <div
+              style={{
+                padding: '14px 22px',
+                borderBottom: '1px solid #ebeef2',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: '#ffffff',
+              }}
+            >
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#1d2d3e' }}>
+                Linhas do extrato bancário ({displayedLines.length})
+              </div>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <Button design="Transparent" onClick={() => setUploadOpen(true)}>
+                  Importar ficheiro
+                </Button>
+                <Button
+                  design="Transparent"
+                  disabled={displayedLines.length === 0}
+                  onClick={handleExportCsv}
+                >
+                  Exportar CSV
+                </Button>
+              </div>
+            </div>
+
+            {loading ? (
+              <div style={{ padding: '48px', textAlign: 'center' }}>
+                <BusyIndicator active size="M" />
+              </div>
+            ) : displayedLines.length === 0 ? (
+              <div style={{ padding: '44px 24px', textAlign: 'center', color: '#556b82' }}>
+                <div
+                  style={{
+                    fontSize: '15px',
+                    fontWeight: 600,
+                    marginBottom: '6px',
+                    color: '#1d2d3e',
+                  }}
+                >
+                  Não foram encontrados movimentos bancários
+                </div>
+                <div style={{ fontSize: '13px', marginBottom: '16px' }}>
+                  Importe um ficheiro de extrato bancário (SWIFT MT940 ou Norma 43) ou ajuste os filtros acima.
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                  <Button design="Emphasized" onClick={() => setUploadOpen(true)}>
+                    Importar extrato
+                  </Button>
+                  <Button design="Default" onClick={() => void handleLoadSamples()}>
+                    Carregar dados de demonstração
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr
+                      style={{
+                        background: '#f5f6f7',
+                        borderBottom: '1px solid #d9d9d9',
+                        textAlign: 'left',
+                        color: '#556b82',
+                        fontSize: '12px',
+                      }}
+                    >
+                      <th style={{ padding: '10px 14px', fontWeight: 600 }}>Data</th>
+                      <th style={{ padding: '10px 10px', fontWeight: 600 }}>Conta</th>
+                      <th style={{ padding: '10px 12px', fontWeight: 600 }}>
+                        Descrição e parceiro sugerido
+                      </th>
+                      <th style={{ padding: '10px 12px', fontWeight: 600, textAlign: 'right' }}>
+                        Montante
+                      </th>
+                      <th style={{ padding: '10px 12px', fontWeight: 600 }}>Estado / Sugestão</th>
+                      <th style={{ padding: '10px 8px', width: '18px' }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedLines.map((l) => {
+                      const isSelected = l.id === selectedLineId;
+                      const topSug = l.suggestions?.[0];
+                      const partnerLabel = topSug
+                        ? `${topSug.cardCode ? `${topSug.cardCode} — ` : ''}${
+                            topSug.journalLine?.cardName || topSug.cardName || ''
+                          }`
+                        : '';
+                      return (
+                        <tr
+                          key={l.id}
+                          onClick={() => setSelectedLineId(l.id)}
+                          style={{
+                            cursor: 'pointer',
+                            borderBottom: '1px solid #edf0f3',
+                            background: isSelected ? '#eef6ff' : '#ffffff',
+                            borderLeft: isSelected
+                              ? '3px solid #0064d9'
+                              : '3px solid transparent',
+                          }}
+                        >
+                          <td
+                            style={{
+                              padding: '10px 14px',
+                              whiteSpace: 'nowrap',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            <div style={{ fontWeight: 600, color: '#1d2d3e' }}>{l.bookingDate}</div>
+                            <div style={{ fontSize: '11px', color: '#6a6d70' }}>#{l.lineNumber}</div>
+                          </td>
+                          <td
+                            style={{
+                              padding: '10px 10px',
+                              whiteSpace: 'nowrap',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            <div style={{ fontWeight: 600, color: '#1d2d3e' }}>{l.bankCode}</div>
+                            <div style={{ fontSize: '11px', color: '#6a6d70' }}>
+                              G/L {l.glAccountCode}
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 12px', verticalAlign: 'middle' }}>
+                            <div
+                              style={{
+                                fontWeight: 500,
+                                color: '#1d2d3e',
+                                maxWidth: '330px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={l.description}
+                            >
+                              {l.description}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: '11.5px',
+                                color: topSug ? '#0064d9' : '#6a6d70',
+                                maxWidth: '330px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {partnerLabel || `Ref: ${l.bankReference || '—'}`}
+                            </div>
+                          </td>
+                          <td
+                            style={{
+                              padding: '10px 12px',
+                              textAlign: 'right',
+                              fontWeight: 700,
+                              whiteSpace: 'nowrap',
+                              verticalAlign: 'middle',
+                              color: l.direction === 'CREDIT' ? '#107e3e' : '#bb0000',
+                            }}
+                          >
+                            {l.direction === 'CREDIT' ? '+' : '-'}
+                            {formatEur(l.amount)}
+                          </td>
+                          <td
+                            style={{
+                              padding: '10px 12px',
+                              whiteSpace: 'nowrap',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            {l.status === 'RECONCILED' ? (
+                              <ObjectStatus state="Positive" showDefaultIcon>
+                                Reconciliado
+                              </ObjectStatus>
+                            ) : l.status === 'ERROR' ? (
+                              <ObjectStatus state="Negative" showDefaultIcon>
+                                Erro
+                              </ObjectStatus>
+                            ) : l.status === 'IGNORED' ? (
+                              <ObjectStatus state="None">Ignorado</ObjectStatus>
+                            ) : topSug ? (
+                              <ObjectStatus
+                                state={
+                                  topSug.confidence >= 85
+                                    ? 'Positive'
+                                    : topSug.confidence >= 70
+                                      ? 'Critical'
+                                      : 'Information'
+                                }
+                                showDefaultIcon
+                              >
+                                {topSug.confidence}% ({topSug.tier === 'HIGH' ? 'Automático' : 'Rever'})
+                              </ObjectStatus>
+                            ) : (
+                              <ObjectStatus state="None">Manual</ObjectStatus>
+                            )}
+                          </td>
+                          <td
+                            style={{
+                              padding: '10px 10px 10px 0',
+                              color: '#6a6d70',
+                              fontSize: '16px',
+                              textAlign: 'right',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            ›
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* Right Column: SAP B1 Web Client Object Page Detail Inspector */}
+          {selectedLine && (
+            <SuggestionInspector
+              line={selectedLine}
+              onActionSuccess={(msg) => {
+                setBanner({ type: 'Positive', text: msg });
+                void refreshAll();
+              }}
+            />
+          )}
+        </div>
       </main>
+
+      {/* SAP B1 Web Client Signature Floating Rounded Footer Bar */}
+      <footer
+        style={{
+          position: 'fixed',
+          bottom: '10px',
+          left: '16px',
+          right: '16px',
+          background: '#ffffff',
+          border: '1px solid #d5dce3',
+          borderRadius: '10px',
+          padding: '8px 20px',
+          boxShadow: '0 4px 16px rgba(15, 35, 55, 0.12)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          zIndex: 50,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontSize: '13px',
+            color: '#556b82',
+          }}
+        >
+          <span>
+            Em aberto: <strong style={{ color: '#1d2d3e' }}>{summary?.totalUnreconciled ?? 0}</strong>
+          </span>
+          <span>|</span>
+          <span>
+            Automáticos prontos (≥85%):{' '}
+            <strong style={{ color: '#107e3e' }}>{summary?.highConfidenceReady ?? 0}</strong>
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Button
+            design="Emphasized"
+            disabled={batchBusy || !summary || summary.highConfidenceReady === 0}
+            onClick={() => void handleBatchApprove()}
+          >
+            Reconciliar automáticos ({summary?.highConfidenceReady ?? 0}) | ⌄
+          </Button>
+          <Button design="Default" onClick={() => setUploadOpen(true)}>
+            Importar extrato
+          </Button>
+          <Button
+            design="Transparent"
+            disabled={displayedLines.length === 0}
+            onClick={handleExportCsv}
+          >
+            Exportar CSV
+          </Button>
+        </div>
+      </footer>
 
       <StatementUploadDialog
         open={uploadOpen}
@@ -690,28 +971,62 @@ export const App: React.FC = () => {
   );
 };
 
-const filterLabelStyle: React.CSSProperties = {
-  display: 'block',
-  marginBottom: '4px',
+const fioriFacetStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '3px',
+};
+
+const fioriFacetLabelStyle: React.CSSProperties = {
   fontSize: '12px',
   color: '#556b82',
+  fontWeight: 400,
 };
 
-const facetItemStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '2px',
+const fioriFacetValueStyle: React.CSSProperties = {
+  fontSize: '14px',
+  fontWeight: 600,
+  color: '#1d2d3e',
 };
 
-const facetDividerStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '2px',
-  borderLeft: '1px solid #e5e5e5',
-  paddingLeft: '20px',
+function anchorTabButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    background: 'transparent',
+    border: 'none',
+    borderBottom: active ? '3px solid #0064d9' : '3px solid transparent',
+    padding: '12px 2px 10px 2px',
+    fontSize: '13.5px',
+    fontWeight: 600,
+    color: active ? '#0064d9' : '#1d2d3e',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  };
+}
+
+const horizonWhiteSectionCardStyle: React.CSSProperties = {
+  background: '#ffffff',
+  borderRadius: '12px',
+  padding: '20px 28px',
+  boxShadow: '0 1px 4px rgba(15, 35, 55, 0.05)',
+  border: '1px solid #e6ebf0',
 };
 
-const facetLabelStyle: React.CSSProperties = {
-  fontSize: '11.5px',
+const fioriSubGroupTitleStyle: React.CSSProperties = {
+  fontSize: '14px',
+  fontWeight: 700,
+  color: '#1d2d3e',
+  marginBottom: '12px',
+};
+
+const fioriFormGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '165px 1fr',
+  rowGap: '10px',
+  columnGap: '14px',
+  alignItems: 'center',
+};
+
+const fioriFormLabelStyle: React.CSSProperties = {
+  fontSize: '13px',
   color: '#556b82',
 };

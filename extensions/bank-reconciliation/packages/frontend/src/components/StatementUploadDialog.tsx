@@ -84,7 +84,7 @@ export const StatementUploadDialog: React.FC<Props> = ({
     <Dialog
       open={open}
       headerText="Importar Extrato Bancário (SWIFT MT940 / Norma 43)"
-      style={{ width: '640px', maxWidth: '94vw' }}
+      onClose={handleClose}
       footer={
         <div
           style={{
@@ -95,9 +95,6 @@ export const StatementUploadDialog: React.FC<Props> = ({
             width: '100%',
           }}
         >
-          <Button design="Transparent" onClick={handleClose} disabled={busy}>
-            Cancelar
-          </Button>
           <Button
             design="Emphasized"
             disabled={!preview || !preview.statement.balanceVerified || preview.newLinesCount === 0 || busy}
@@ -105,10 +102,13 @@ export const StatementUploadDialog: React.FC<Props> = ({
           >
             Importar {preview ? `(${preview.newLinesCount} movimentos)` : ''}
           </Button>
+          <Button design="Transparent" onClick={handleClose} disabled={busy}>
+            Cancelar
+          </Button>
         </div>
       }
     >
-      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ width: '640px', maxWidth: '88vw', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div
           onClick={() => fileInputRef.current?.click()}
           onDragOver={(e) => e.preventDefault()}

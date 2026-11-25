@@ -341,16 +341,16 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
     <section
       style={{
         background: '#ffffff',
-        border: '1px solid #d9d9d9',
-        borderRadius: '4px',
+        border: '1px solid #e6ebf0',
+        borderRadius: '12px',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+        boxShadow: '0 1px 4px rgba(15, 35, 55, 0.05)',
         overflow: 'hidden',
       }}
     >
       {/* SAP B1 Web Client Object Page Header */}
-      <div style={{ padding: '14px 18px 12px 18px', borderBottom: '1px solid #e5e5e5' }}>
+      <div style={{ padding: '18px 24px 14px 24px' }}>
         <div
           style={{
             display: 'flex',
@@ -463,10 +463,11 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
         <div
           style={{
             display: 'flex',
-            borderBottom: '1px solid #d9d9d9',
-            background: '#fafafa',
-            padding: '0 14px',
-            gap: '4px',
+            borderTop: '1px solid #eceef0',
+            borderBottom: '2px solid #0032a5',
+            background: '#ffffff',
+            padding: '0 24px',
+            gap: '20px',
             overflowX: 'auto',
           }}
         >
@@ -480,16 +481,16 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                 key: 'OPEN_DOCS' as InspectorTab,
                 label:
                   line.direction === 'CREDIT'
-                    ? `Documentos de Clientes${openDocs.length ? ` (${openDocs.length})` : ''}`
-                    : `Documentos de Fornecedores${openDocs.length ? ` (${openDocs.length})` : ''}`,
+                    ? `Documentos de clientes${openDocs.length ? ` (${openDocs.length})` : ''}`
+                    : `Documentos de fornecedores${openDocs.length ? ` (${openDocs.length})` : ''}`,
               },
               {
                 key: 'JOURNAL' as InspectorTab,
-                label: `Lançamentos no Razão${filteredJournalLines.length ? ` (${filteredJournalLines.length})` : ''}`,
+                label: `Lançamentos no razão${filteredJournalLines.length ? ` (${filteredJournalLines.length})` : ''}`,
               },
               {
                 key: 'DIRECT_GL' as InspectorTab,
-                label: 'Conta do Razão (G/L)',
+                label: 'Conta do razão (G/L)',
               },
             ] as const
           ).map((t) => {
@@ -502,11 +503,11 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  borderBottom: active ? '2px solid #0070f2' : '2px solid transparent',
-                  color: active ? '#0070f2' : '#32363a',
-                  fontWeight: active ? 700 : 500,
+                  borderBottom: active ? '3px solid #0064d9' : '3px solid transparent',
+                  color: active ? '#0064d9' : '#1d2d3e',
+                  fontWeight: 600,
                   fontSize: '13px',
-                  padding: '10px 12px',
+                  padding: '10px 2px 9px 2px',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                   fontFamily: 'inherit',
@@ -520,7 +521,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
       )}
 
       {/* Object Page Section Body */}
-      <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {(error || line.errorMessage) && (
           <MessageStrip design="Negative" hideCloseButton>
             {error || line.errorMessage}

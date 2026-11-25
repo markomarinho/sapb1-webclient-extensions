@@ -555,31 +555,36 @@ export function App() {
           </div>
         )}
 
-        {/* Center Collapse Chevron Pill + Anchor Tab Bar (exact SAP Horizon ObjectPage AnchorBar) */}
+        {/* Center Collapse Chevron Divider Bar (straddles divider line with overflow: visible) */}
         <div
           style={{
             position: 'relative',
-            borderTop: '1px solid #eceef0',
-            borderBottom: '2px solid #0032a5',
-            padding: '0 36px',
+            height: '16px',
             display: 'flex',
             alignItems: 'center',
-            gap: '28px',
+            justifyContent: 'center',
             background: '#ffffff',
+            overflow: 'visible',
           }}
         >
-          {/* Floating Collapse/Expand Chevron Button in Center */}
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: '50%',
+              borderTop: '1px solid #e5e8eb',
+            }}
+          />
           <button
             type="button"
             onClick={() => setHeaderExpanded((v) => !v)}
             title={headerExpanded ? 'Ocultar cabeçalho' : 'Expandir cabeçalho'}
             style={{
-              position: 'absolute',
-              top: '-13px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: '26px',
-              height: '24px',
+              position: 'relative',
+              zIndex: 2,
+              width: '28px',
+              height: '22px',
               borderRadius: '6px',
               border: '1px solid #b8c2cc',
               background: '#ffffff',
@@ -590,11 +595,26 @@ export function App() {
               justifyContent: 'center',
               fontSize: '12px',
               fontWeight: 700,
+              lineHeight: 1,
               boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
             }}
           >
             {headerExpanded ? '⌃' : '⌄'}
           </button>
+        </div>
+
+        {/* Anchor Tab Bar (exact SAP Horizon ObjectPage AnchorBar) */}
+        <div
+          style={{
+            borderBottom: '2px solid #0032a5',
+            padding: '2px 36px 0 36px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '28px',
+            background: '#ffffff',
+            overflowX: 'auto',
+          }}
+        >
 
           <button
             type="button"
