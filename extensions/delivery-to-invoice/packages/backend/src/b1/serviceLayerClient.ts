@@ -512,7 +512,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
   constructor(private readonly config: AppConfig) {}
 
   public async getSessionCompanyName(cookieHeader?: string): Promise<string | null> {
-    if (!cookieHeader || !cookieHeader.includes('B1SESSION=')) return null;
+    if (!this.isUserSession(cookieHeader)) return null;
     try {
       const info = await this.requestJson<{ CompanyName?: string }>(
         'POST',
@@ -527,8 +527,25 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
     }
   }
 
+  /** True when the caller brought a Web Client `SESSION` cookie or a Service Layer `B1SESSION` cookie. */
+  private isUserSession(cookieHeader?: string): cookieHeader is string {
+    return Boolean(cookieHeader && /(?:^|;\s*)(?:B1)?SESSION=/.test(cookieHeader));
+  }
+
+  /** Browser sessions (`SESSION`) must go through the Web Client gateway; B1SESSION goes straight to the SL. */
+  private baseUrlFor(cookieHeader?: string): string {
+    const viaWebClient =
+      Boolean(this.config.B1_WEBCLIENT_URL) &&
+      Boolean(cookieHeader) &&
+      !cookieHeader!.includes('B1SESSION=') &&
+      /(?:^|;\s*)SESSION=/.test(cookieHeader!);
+    return viaWebClient
+      ? `${this.config.B1_WEBCLIENT_URL.replace(/\/+$/, '')}/b1s/v1`
+      : this.config.B1_SERVICE_LAYER_URL.replace(/\/+$/, '');
+  }
+
   private async resolveCookie(cookieHeader?: string): Promise<string> {
-    if (cookieHeader && cookieHeader.includes('B1SESSION=')) {
+    if (this.isUserSession(cookieHeader)) {
       return cookieHeader;
     }
     const company = currentCompany();
@@ -571,7 +588,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
     body?: unknown
   ): Promise<T> {
     const cookie = await this.resolveCookie(cookieHeader);
-    const baseUrl = this.config.B1_SERVICE_LAYER_URL.replace(/\/+$/, '');
+    const baseUrl = this.baseUrlFor(cookieHeader);
     const res = await executeNodeHttpRequest(`${baseUrl}${endpoint}`, {
       method,
       headers: {

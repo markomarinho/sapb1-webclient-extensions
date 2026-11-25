@@ -111,7 +111,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<{
   const scheduler = new AutoInvoiceScheduler(db, workflow);
   scheduler.refreshSchedule();
 
-  // Company of every request comes from the caller's own B1SESSION (never from configuration):
+  // Company of every request comes from the caller's own session (Web Client SESSION / B1SESSION) (never from configuration):
   // the session's CompanyName is looked up in B1_COMPANIES to get the CompanyDB. Mock mode has no
   // sessions and uses the single configured B1_COMPANY_DB.
   const sessionCompanyCache = new Map<string, { companyDb: string; expiresAt: number }>();
@@ -122,8 +122,14 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<{
   ): Promise<{ companyDb: string } | { status: number; error: string }> {
     if (config.B1_MODE !== 'live') return { companyDb: config.B1_COMPANY_DB };
 
-    const sessionId = /(?:^|;\s*)B1SESSION=([^;]+)/.exec(cookieHeader ?? '')?.[1];
+    const sessionId = /(?:^|;\s*)(?:B1)?SESSION=([^;]+)/.exec(cookieHeader ?? '')?.[1];
     if (!sessionId) {
+      // Names only (never values): helps diagnose which cookies the browser actually sends to the backend.
+      const names = (cookieHeader ?? '')
+        .split(';')
+        .map((c) => c.split('=')[0].trim())
+        .filter(Boolean);
+      console.warn(`[D2I] Request without a SESSION/B1SESSION cookie. Cookies received: [${names.join(', ') || 'none'}]`);
       return { status: 401, error: 'Sessão SAP B1 não encontrada. Abra a extensão a partir do Web Client.' };
     }
     const cached = sessionCompanyCache.get(sessionId);

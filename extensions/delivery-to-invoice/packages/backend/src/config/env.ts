@@ -36,6 +36,10 @@ const EnvSchema = z.object({
   B1_SERVICE_LAYER_URL: z.string().default('https://b1.internal.example.local:50000/b1s/v1'),
   // Legacy/default company: only used to (a) tag rows created before multi-company support and (b) as the
   // single company in mock mode. In live mode the company always comes from the user's session.
+  // The Web Client's own gateway (gate.jar). Browsers only hold its `SESSION` cookie (the Service Layer
+  // B1SESSION stays server-side), so calls made on behalf of a logged-in user go through
+  // <B1_WEBCLIENT_URL>/b1s/v1 with that cookie, exactly like the Web Client UI does. Example: https://192.168.1.30:8443
+  B1_WEBCLIENT_URL: z.string().default(''),
   B1_COMPANY_DB: z.string().default('SBO_COMPANY_PT'),
   // Company that owns data created before multi-company support (defaults to B1_COMPANY_DB).
   B1_LEGACY_COMPANY_DB: z.string().default(''),
