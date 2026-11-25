@@ -343,6 +343,10 @@ export const D2I_TRANSLATIONS = {
     subjectLabel: 'Assunto: ',
     attachmentLabel: 'Anexo: ',
     settingsSavedBanner: 'Definições guardadas com sucesso.',
+    backendUrlLabel: 'URL do backend (opcional)',
+    backendUrlHelp: 'Vazio = modo Web Client (sem emails/agendador). Ex.: https://servidor:4020',
+    backendUrlReloadNote: 'A página será recarregada para aplicar o novo modo.',
+    backendUrlCurrentMode: 'Modo atual',
   },
   en: {
     appTitle: 'Automatic Delivery Note Invoicing',
@@ -561,6 +565,10 @@ export const D2I_TRANSLATIONS = {
     subjectLabel: 'Subject: ',
     attachmentLabel: 'Attachment: ',
     settingsSavedBanner: 'Settings saved successfully.',
+    backendUrlLabel: 'Backend URL (optional)',
+    backendUrlHelp: 'Empty = Web Client mode (no email/scheduler). E.g. https://server:4020',
+    backendUrlReloadNote: 'The page will reload to apply the new mode.',
+    backendUrlCurrentMode: 'Current mode',
   },
   es: {
     appTitle: 'Facturación automática de entregas',
@@ -779,6 +787,10 @@ export const D2I_TRANSLATIONS = {
     subjectLabel: 'Asunto: ',
     attachmentLabel: 'Adjunto: ',
     settingsSavedBanner: 'Ajustes guardados correctamente.',
+    backendUrlLabel: 'URL del backend (opcional)',
+    backendUrlHelp: 'Vacío = modo Web Client (sin email/planificador). Ej.: https://servidor:4020',
+    backendUrlReloadNote: 'La página se recargará para aplicar el nuevo modo.',
+    backendUrlCurrentMode: 'Modo actual',
   },
   de: {
     appTitle: 'Automatische Lieferscheinfakturierung',
@@ -997,6 +1009,10 @@ export const D2I_TRANSLATIONS = {
     subjectLabel: 'Betreff: ',
     attachmentLabel: 'Anhang: ',
     settingsSavedBanner: 'Einstellungen erfolgreich gespeichert.',
+    backendUrlLabel: 'Backend-URL (optional)',
+    backendUrlHelp: 'Leer = Web-Client-Modus (kein E-Mail/Planer). Z. B. https://server:4020',
+    backendUrlReloadNote: 'Die Seite wird neu geladen, um den neuen Modus anzuwenden.',
+    backendUrlCurrentMode: 'Aktueller Modus',
   },
 } as const;
 

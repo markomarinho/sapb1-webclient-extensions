@@ -18,7 +18,7 @@ import {
   Switch,
   TextArea,
 } from '@ui5/webcomponents-react';
-import { api } from '../api';
+import { api, getApiBaseUrl, setApiBaseUrl } from '../api';
 import { useI18n } from '../i18n';
 
 interface SettingsDialogProps {
@@ -69,6 +69,7 @@ export function SettingsDialog({
   );
   const [activeTab, setActiveTab] = useState<SettingsTab>('GENERAL');
   const [smtpPassword, setSmtpPassword] = useState('');
+  const [backendUrl, setBackendUrl] = useState(() => getApiBaseUrl());
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -89,6 +90,7 @@ export function SettingsDialog({
     setError(null);
     setTestResult(null);
     setSmtpPassword('');
+    setBackendUrl(getApiBaseUrl());
     api
       .getSettings()
       .then((res) => {
@@ -109,6 +111,15 @@ export function SettingsDialog({
     setSaving(true);
     setError(null);
     try {
+      const newUrl = backendUrl.trim().replace(/\/+$/, '');
+      if (newUrl !== getApiBaseUrl()) {
+        // Mode (Web Client vs backend) is resolved at load time: persist and reload.
+        setApiBaseUrl(newUrl);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('apiUrl'); // the query param would override the saved value
+        window.location.replace(url.toString());
+        return;
+      }
       await api.updateSettings({
         ...settings,
         ...(smtpPassword ? { smtpPassword } : {}),
@@ -207,6 +218,20 @@ export function SettingsDialog({
         </div>
 
         <div style={{ padding: '18px 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={whitePanelStyle}>
+            <div style={formGridStyle}>
+              <span style={labelStyle}>{t.backendUrlLabel}</span>
+              <Input
+                value={backendUrl}
+                placeholder="https://servidor:4020"
+                style={{ width: '100%' }}
+                onInput={(e) => setBackendUrl(e.target.value)}
+              />
+            </div>
+            <div style={{ fontSize: '12px', color: '#556b82', marginTop: '6px' }}>
+              {t.backendUrlHelp} {t.backendUrlReloadNote}
+            </div>
+          </div>
           {error && <MessageStrip design="Negative">{error}</MessageStrip>}
           {testResult && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
