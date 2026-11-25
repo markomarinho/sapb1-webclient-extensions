@@ -12,6 +12,7 @@ import {
   Tag,
 } from '@ui5/webcomponents-react';
 import { api } from '../api';
+import { useI18n } from '../i18n';
 
 interface Props {
   open: boolean;
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export const GlRulesDialog: React.FC<Props> = ({ open, onClose, onUpdated }) => {
+  const { t } = useI18n();
   const [rules, setRules] = useState<GlMatchingRule[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,12 +91,12 @@ export const GlRulesDialog: React.FC<Props> = ({ open, onClose, onUpdated }) => 
   return (
     <Dialog
       open={open}
-      headerText="Regras Automáticas de Contabilização G/L (Comissões, Imposto do Selo, Juros)"
+      headerText={t.glRulesDialogTitle}
       onClose={onClose}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', width: '100%' }}>
           <Button design="Emphasized" onClick={onClose}>
-            Fechar
+            {t.closeBtn}
           </Button>
         </div>
       }

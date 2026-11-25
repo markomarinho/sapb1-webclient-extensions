@@ -5,6 +5,7 @@ import { setTheme } from '@ui5/webcomponents-base/dist/config/Theme.js';
 import { ThemeProvider } from '@ui5/webcomponents-react';
 import '@ui5/webcomponents-icons/dist/AllIcons.js';
 import { App } from './App';
+import { I18nProvider } from './i18n';
 
 setDefaultFontLoading(false);
 
@@ -30,7 +31,9 @@ setTheme(detectSapWebClientTheme());
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ThemeProvider>
-      <App />
+      <I18nProvider>
+        <App />
+      </I18nProvider>
     </ThemeProvider>
   </React.StrictMode>
 );

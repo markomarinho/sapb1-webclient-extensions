@@ -11,6 +11,7 @@ import {
   Select,
 } from '@ui5/webcomponents-react';
 import { api, formatEur } from '../api';
+import { useI18n } from '../i18n';
 
 interface Props {
   open: boolean;
@@ -25,6 +26,7 @@ export const StatementUploadDialog: React.FC<Props> = ({
   onClose,
   onImported,
 }) => {
+  const { t } = useI18n();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<StatementPreviewResponse | null>(null);
@@ -83,7 +85,7 @@ export const StatementUploadDialog: React.FC<Props> = ({
   return (
     <Dialog
       open={open}
-      headerText="Importar Extrato Bancário (SWIFT MT940 / Norma 43)"
+      headerText={t.uploadDialogTitle}
       onClose={handleClose}
       footer={
         <div
@@ -100,10 +102,10 @@ export const StatementUploadDialog: React.FC<Props> = ({
             disabled={!preview || !preview.statement.balanceVerified || preview.newLinesCount === 0 || busy}
             onClick={handleConfirmImport}
           >
-            Importar {preview ? `(${preview.newLinesCount} movimentos)` : ''}
+            {t.importBtnPrefix} {preview ? `(${preview.newLinesCount})` : ''}
           </Button>
           <Button design="Transparent" onClick={handleClose} disabled={busy}>
-            Cancelar
+            {t.cancelBtn}
           </Button>
         </div>
       }
@@ -134,7 +136,7 @@ export const StatementUploadDialog: React.FC<Props> = ({
             onChange={(e) => void handleFilePicked(e.target.files?.[0])}
           />
           <div style={{ fontWeight: 600, color: '#0070f2', marginBottom: '8px' }}>
-            {selectedFile ? selectedFile.name : 'Arraste o ficheiro aqui ou selecione do computador'}
+            {selectedFile ? selectedFile.name : t.dragDropPrompt}
           </div>
           <div style={{ marginBottom: '8px' }}>
             <Button
@@ -144,11 +146,11 @@ export const StatementUploadDialog: React.FC<Props> = ({
                 fileInputRef.current?.click();
               }}
             >
-              Procurar Ficheiro (.mt940 / .n43)...
+              {t.browseFileBtn}
             </Button>
           </div>
           <Label wrappingType="Normal">
-            Suporta os formatos standard SWIFT MT940 (.mt940, .sta, .940) e Norma 43 / AEB Cuaderno 43 (.n43, .c43, .aeb, .txt)
+            {t.supportedFormatsHint}
           </Label>
         </div>
 

@@ -22,6 +22,7 @@ import {
   Title,
 } from '@ui5/webcomponents-react';
 import { api, formatEur } from '../api';
+import { useI18n } from '../i18n';
 
 interface Props {
   line: StagedBankLine;
@@ -31,6 +32,7 @@ interface Props {
 type InspectorTab = 'SUGGESTIONS' | 'OPEN_DOCS' | 'JOURNAL' | 'DIRECT_GL';
 
 export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) => {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<InspectorTab>('SUGGESTIONS');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -363,10 +365,10 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
               <Title level="H5" style={{ margin: 0 }}>
-                Movimento #{line.lineNumber} — {line.bankCode}
+                {t.movementHeaderPrefix} #{line.lineNumber} — {line.bankCode}
               </Title>
               <Tag design="Set2" colorScheme="6" hideStateIcon>
-                Conta G/L {line.glAccountCode}
+                {t.glAccountPrefix} {line.glAccountCode}
               </Tag>
             </div>
             <div style={{ fontSize: '13px', color: '#32363a', fontWeight: 500 }}>{line.description}</div>
@@ -379,17 +381,17 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                 disabled={busy}
                 onClick={() => void handleApproveSuggestion(topSug)}
               >
-                Reconciliar Sugestão ({topSug.confidence}%)
+                {t.reconcileSuggestionBtn} ({topSug.confidence}%)
               </Button>
             )}
             {line.status === 'IGNORED' || line.status === 'ERROR' ? (
               <Button design="Default" onClick={() => void handleReopen()} disabled={busy}>
-                Reativar
+                {t.reopenBtn}
               </Button>
             ) : (
               line.status !== 'RECONCILED' && (
                 <Button design="Transparent" onClick={() => void handleIgnore()} disabled={busy}>
-                  Ignorar
+                  {t.ignoreBtn}
                 </Button>
               )
             )}
@@ -410,28 +412,28 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
         >
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', fontSize: '12px' }}>
             <div>
-              <span style={{ color: '#6a6d70', display: 'block' }}>Data de Lançamento</span>
+              <span style={{ color: '#6a6d70', display: 'block' }}>{t.bookingDateLabel}</span>
               <strong>{line.bookingDate}</strong>
             </div>
             <div>
-              <span style={{ color: '#6a6d70', display: 'block' }}>Data Valor</span>
+              <span style={{ color: '#6a6d70', display: 'block' }}>{t.valueDateLabel}</span>
               <strong>{line.valueDate}</strong>
             </div>
             <div>
-              <span style={{ color: '#6a6d70', display: 'block' }}>Ref. Bancária / Cód.</span>
+              <span style={{ color: '#6a6d70', display: 'block' }}>{t.bankRefCodeLabel}</span>
               <strong>
                 {line.bankReference || '—'} ({line.transactionCode})
               </strong>
             </div>
             {line.extracted.counterpartyNif && (
               <div>
-                <span style={{ color: '#6a6d70', display: 'block' }}>NIF Detetado</span>
+                <span style={{ color: '#6a6d70', display: 'block' }}>{t.detectedNifLabel}</span>
                 <strong>{line.extracted.counterpartyNif}</strong>
               </div>
             )}
             {line.extracted.multibancoRef && (
               <div>
-                <span style={{ color: '#6a6d70', display: 'block' }}>Ref. Multibanco</span>
+                <span style={{ color: '#6a6d70', display: 'block' }}>{t.mbRefLabel}</span>
                 <strong>
                   {line.extracted.multibancoEntity ? `${line.extracted.multibancoEntity} / ` : ''}
                   {line.extracted.multibancoRef}
@@ -452,7 +454,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
               {formatEur(line.amount)}
             </div>
             <div style={{ fontSize: '11px', color: '#6a6d70' }}>
-              {line.direction === 'CREDIT' ? 'Recebimento (Crédito Bancário)' : 'Pagamento (Débito Bancário)'}
+              {line.direction === 'CREDIT' ? t.creditTypeDesc : t.debitTypeDesc}
             </div>
           </div>
         </div>
@@ -475,31 +477,31 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
             [
               {
                 key: 'SUGGESTIONS' as InspectorTab,
-                label: `Sugestões (${line.suggestions?.length ?? 0})`,
+                label: `${t.inspTabSuggestions} (${line.suggestions?.length ?? 0})`,
               },
               {
                 key: 'OPEN_DOCS' as InspectorTab,
                 label:
                   line.direction === 'CREDIT'
-                    ? `Documentos de clientes${openDocs.length ? ` (${openDocs.length})` : ''}`
-                    : `Documentos de fornecedores${openDocs.length ? ` (${openDocs.length})` : ''}`,
+                    ? `${t.inspTabCustomerDocs}${openDocs.length ? ` (${openDocs.length})` : ''}`
+                    : `${t.inspTabVendorDocs}${openDocs.length ? ` (${openDocs.length})` : ''}`,
               },
               {
                 key: 'JOURNAL' as InspectorTab,
-                label: `Lançamentos no razão${filteredJournalLines.length ? ` (${filteredJournalLines.length})` : ''}`,
+                label: `${t.inspTabJournal}${filteredJournalLines.length ? ` (${filteredJournalLines.length})` : ''}`,
               },
               {
                 key: 'DIRECT_GL' as InspectorTab,
-                label: 'Conta do razão (G/L)',
+                label: t.inspTabDirectGl,
               },
             ] as const
-          ).map((t) => {
-            const active = activeTab === t.key;
+          ).map((tab) => {
+            const active = activeTab === tab.key;
             return (
               <button
-                key={t.key}
+                key={tab.key}
                 type="button"
-                onClick={() => setActiveTab(t.key)}
+                onClick={() => setActiveTab(tab.key)}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -513,7 +515,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
                   fontFamily: 'inherit',
                 }}
               >
-                {t.label}
+                {tab.label}
               </button>
             );
           })}
@@ -1267,7 +1269,7 @@ export const SuggestionInspector: React.FC<Props> = ({ line, onActionSuccess }) 
         {/* Expandable Raw Statement Record Footer */}
         <div style={{ borderTop: '1px solid #efefef', paddingTop: '6px' }}>
           <Button design="Transparent" onClick={() => setShowRaw((v) => !v)}>
-            {showRaw ? '▾ Ocultar Registo Original do Extrato' : '▸ Ver Registo Original do Extrato'}
+            {showRaw ? t.hideRawRecord : t.showRawRecord}
           </Button>
           {showRaw && (
             <pre

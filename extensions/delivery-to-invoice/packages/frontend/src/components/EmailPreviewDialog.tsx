@@ -1,6 +1,7 @@
 import React from 'react';
 import type { SentEmailPreview } from '@b1-d2i/shared';
 import { Bar, Button, Dialog, Label, Text } from '@ui5/webcomponents-react';
+import { useI18n } from '../i18n';
 
 interface EmailPreviewDialogProps {
   email: SentEmailPreview | null;
@@ -8,16 +9,17 @@ interface EmailPreviewDialogProps {
 }
 
 export function EmailPreviewDialog({ email, onClose }: EmailPreviewDialogProps) {
+  const { t } = useI18n();
   return (
     <Dialog
       open={Boolean(email)}
-      headerText="Pré-visualização do Email Enviado"
+      headerText={t.emailPreviewTitle}
       onClose={onClose}
       footer={
         <Bar
           endContent={
             <Button design="Emphasized" onClick={onClose}>
-              Fechar
+              {t.closeBtn}
             </Button>
           }
         />
@@ -26,7 +28,7 @@ export function EmailPreviewDialog({ email, onClose }: EmailPreviewDialogProps) 
       {email && (
         <div style={{ width: '620px', maxWidth: '88vw', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <div>
-            <Label>Para: </Label>
+            <Label>{t.toLabel}</Label>
             <Text>
               {email.recipientName ? `${email.recipientName} <${email.to}>` : email.to}
             </Text>
@@ -38,11 +40,11 @@ export function EmailPreviewDialog({ email, onClose }: EmailPreviewDialogProps) 
             </div>
           )}
           <div>
-            <Label>Assunto: </Label>
+            <Label>{t.subjectLabel}</Label>
             <Text style={{ fontWeight: 600 }}>{email.subject}</Text>
           </div>
           <div>
-            <Label>Anexo: </Label>
+            <Label>{t.attachmentLabel}</Label>
             <Text>
               {email.attachmentFilename} ({(email.attachmentBytes / 1024).toFixed(1)} KB)
             </Text>

@@ -16,8 +16,10 @@ import { ConnectionSettingsDialog } from './components/ConnectionSettingsDialog'
 import { GlRulesDialog } from './components/GlRulesDialog';
 import { StatementUploadDialog } from './components/StatementUploadDialog';
 import { SuggestionInspector } from './components/SuggestionInspector';
+import { useI18n, type LocalePreference } from './i18n';
 
 export const App: React.FC = () => {
+  const { t, preference, detectedLocale, setPreference } = useI18n();
   const [houseBanks, setHouseBanks] = useState<HouseBankAccount[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [lines, setLines] = useState<StagedBankLine[]>([]);
@@ -99,7 +101,7 @@ export const App: React.FC = () => {
       const res = await api.importSampleStatements();
       setBanner({
         type: 'Positive',
-        text: `Extratos de demonstração (SWIFT MT940 + Norma 43) carregados: ${res.importedLinesCount} movimentos novos.`,
+        text: `SWIFT MT940 + Norma 43: +${res.importedLinesCount} ${t.movementUnit}.`,
       });
       await refreshAll();
     } catch (err) {
@@ -119,7 +121,7 @@ export const App: React.FC = () => {
       const res = await api.batchApprove(88, selectedBankId);
       setBanner({
         type: res.errors.length > 0 ? 'Information' : 'Positive',
-        text: `Reconciliação em lote concluída: ${res.reconciledCount} movimento(s) lançado(s) e reconciliado(s) no SAP Business One.`,
+        text: `${res.reconciledCount} ${t.movementUnit} -> SAP Business One.`,
       });
       await refreshAll();
     } catch (err) {
@@ -222,11 +224,9 @@ export const App: React.FC = () => {
                 letterSpacing: '-0.2px',
               }}
             >
-              Processar extratos bancários externos
+              {t.appTitle}
             </h1>
-            <span style={{ fontSize: '13px', color: '#556b82' }}>
-              SWIFT MT940 &amp; Norma 43
-            </span>
+            <span style={{ fontSize: '13px', color: '#556b82' }}>{t.appSubtitle}</span>
             {summary && (
               <Tag
                 design={summary.mode === 'live' ? 'Positive' : 'Set2'}
@@ -234,46 +234,71 @@ export const App: React.FC = () => {
                 hideStateIcon
               >
                 {isUsingNativeWebClientB1s()
-                  ? 'Ligado ao SAP B1'
+                  ? t.connectedB1
                   : summary.mode === 'live'
-                    ? 'SAP HANA Live'
-                    : 'Simulação Local'}
+                    ? t.sapHanaLive
+                    : t.localSimulation}
               </Tag>
             )}
           </div>
 
           {/* Right Header Action Links (SAP Horizon style) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <Button design="Transparent" onClick={() => setUploadOpen(true)}>
-              Importar extrato
+              {t.importStatementBtn}
             </Button>
             <Button
               design="Transparent"
               onClick={() => void handleLoadSamples()}
               disabled={batchBusy}
             >
-              Carregar demonstração
+              {t.loadSampleBtn}
             </Button>
             <Button design="Transparent" onClick={() => setGlRulesOpen(true)}>
-              Regras de contabilização G/L
+              {t.glRulesBtn}
             </Button>
             <Button design="Transparent" onClick={() => setAuditOpen(true)}>
-              Registo de auditoria
+              {t.auditLogBtn}
             </Button>
             <Button design="Transparent" onClick={() => setConnOpen(true)}>
-              {isUsingNativeWebClientB1s() ? 'Diagnóstico' : 'Editar ligação SAP B1'}
+              {isUsingNativeWebClientB1s() ? t.diagnosticsBtn : t.editConnectionBtn}
             </Button>
             <Button
               design="Transparent"
               onClick={() => void refreshAll()}
               disabled={loading}
             >
-              Atualizar
+              {t.refreshBtn}
             </Button>
+            <Select
+              style={{ width: '165px' }}
+              onChange={(e) => {
+                const val = e.detail.selectedOption?.getAttribute('data-lang') as
+                  | LocalePreference
+                  | undefined;
+                if (val) setPreference(val);
+              }}
+            >
+              <Option data-lang="auto" selected={preference === 'auto'}>
+                {t.langAutoPrefix}: {detectedLocale.toUpperCase()})
+              </Option>
+              <Option data-lang="pt" selected={preference === 'pt'}>
+                Português (PT)
+              </Option>
+              <Option data-lang="en" selected={preference === 'en'}>
+                English (EN)
+              </Option>
+              <Option data-lang="es" selected={preference === 'es'}>
+                Español (ES)
+              </Option>
+              <Option data-lang="de" selected={preference === 'de'}>
+                Deutsch (DE)
+              </Option>
+            </Select>
           </div>
         </div>
 
-        {/* ObjectPage Header Facets (matches SAP B1 Web Client ObjectPage header facets) */}
+        {/* ObjectPage Header Facets */}
         {headerExpanded && summary && (
           <div
             style={{
@@ -285,42 +310,44 @@ export const App: React.FC = () => {
             }}
           >
             <div style={fioriFacetStyle}>
-              <span style={fioriFacetLabelStyle}>Movimentos em aberto</span>
-              <span style={fioriFacetValueStyle}>{summary.totalUnreconciled} movimento(s)</span>
+              <span style={fioriFacetLabelStyle}>{t.facetOpenMovements}</span>
+              <span style={fioriFacetValueStyle}>
+                {summary.totalUnreconciled} {t.movementUnit}
+              </span>
               <span style={{ fontSize: '12px', color: '#556b82' }}>
-                Reconciliados: {summary.reconciledCount}
+                {t.reconciledShort}: {summary.reconciledCount}
               </span>
             </div>
 
             <div style={fioriFacetStyle}>
-              <span style={fioriFacetLabelStyle}>Prontos p/ automático (≥85%)</span>
+              <span style={fioriFacetLabelStyle}>{t.facetAutoReady}</span>
               <span style={{ ...fioriFacetValueStyle, color: '#107e3e' }}>
-                {summary.highConfidenceReady} movimento(s)
+                {summary.highConfidenceReady} {t.movementUnit}
               </span>
               <span style={{ fontSize: '12px', color: '#556b82' }}>
-                Revisão manual: {summary.needsReview}
+                {t.manualReviewShort}: {summary.needsReview}
               </span>
             </div>
 
             <div style={fioriFacetStyle}>
-              <span style={fioriFacetLabelStyle}>Recebimentos pendentes</span>
+              <span style={fioriFacetLabelStyle}>{t.facetPendingInflow}</span>
               <span style={{ ...fioriFacetValueStyle, color: '#107e3e' }}>
                 +{formatEur(summary.unreconciledInflowEur)}
               </span>
-              <span style={{ fontSize: '12px', color: '#556b82' }}>Créditos bancários</span>
+              <span style={{ fontSize: '12px', color: '#556b82' }}>{t.bankCreditsSub}</span>
             </div>
 
             <div style={fioriFacetStyle}>
-              <span style={fioriFacetLabelStyle}>Pagamentos pendentes</span>
+              <span style={fioriFacetLabelStyle}>{t.facetPendingOutflow}</span>
               <span style={{ ...fioriFacetValueStyle, color: '#bb0000' }}>
                 -{formatEur(summary.unreconciledOutflowEur)}
               </span>
-              <span style={{ fontSize: '12px', color: '#556b82' }}>Débitos bancários</span>
+              <span style={{ fontSize: '12px', color: '#556b82' }}>{t.bankDebitsSub}</span>
             </div>
 
             {/* SAP Fiori Micro-Progress Bar Facet */}
             <div style={{ ...fioriFacetStyle, minWidth: '185px' }}>
-              <span style={fioriFacetLabelStyle}>Cobertura de reconciliação</span>
+              <span style={fioriFacetLabelStyle}>{t.facetReconCoverage}</span>
               <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#1d2d3e' }}>
                 {autoCoveragePct}%
               </span>
@@ -364,7 +391,7 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Center Collapse Chevron Divider Bar (straddles divider line with overflow: visible) */}
+        {/* Center Collapse Chevron Divider Bar */}
         <div
           style={{
             position: 'relative',
@@ -388,7 +415,7 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => setHeaderExpanded((v) => !v)}
-            title={headerExpanded ? 'Ocultar cabeçalho' : 'Expandir cabeçalho'}
+            title={headerExpanded ? t.headerCollapse : t.headerExpand}
             style={{
               position: 'relative',
               zIndex: 2,
@@ -412,7 +439,7 @@ export const App: React.FC = () => {
           </button>
         </div>
 
-        {/* Anchor Tab Bar (exact SAP Horizon ObjectPage AnchorBar) */}
+        {/* Anchor Tab Bar */}
         <div
           style={{
             borderBottom: '2px solid #0032a5',
@@ -424,7 +451,6 @@ export const App: React.FC = () => {
             overflowX: 'auto',
           }}
         >
-
           <button
             type="button"
             onClick={() => {
@@ -433,7 +459,7 @@ export const App: React.FC = () => {
             }}
             style={anchorTabButtonStyle(statusGroup === 'PENDING' && confidenceFilter === 'ALL')}
           >
-            Em aberto / Por reconciliar ({summary?.totalUnreconciled ?? 0})
+            {t.tabPending} ({summary?.totalUnreconciled ?? 0})
           </button>
           <button
             type="button"
@@ -443,7 +469,7 @@ export const App: React.FC = () => {
             }}
             style={anchorTabButtonStyle(statusGroup === 'PENDING' && confidenceFilter === 'HIGH')}
           >
-            Prontos p/ automático ≥85% ({summary?.highConfidenceReady ?? 0})
+            {t.tabAutoReady} ({summary?.highConfidenceReady ?? 0})
           </button>
           <button
             type="button"
@@ -453,7 +479,7 @@ export const App: React.FC = () => {
             }}
             style={anchorTabButtonStyle(statusGroup === 'PENDING' && confidenceFilter === 'REVIEW')}
           >
-            Revisão recomendada ({summary?.needsReview ?? 0})
+            {t.tabReview} ({summary?.needsReview ?? 0})
           </button>
           <button
             type="button"
@@ -463,7 +489,7 @@ export const App: React.FC = () => {
             }}
             style={anchorTabButtonStyle(statusGroup === 'RECONCILED')}
           >
-            Reconciliados ({summary?.reconciledCount ?? 0})
+            {t.tabReconciled} ({summary?.reconciledCount ?? 0})
           </button>
           <button
             type="button"
@@ -473,7 +499,7 @@ export const App: React.FC = () => {
             }}
             style={anchorTabButtonStyle(statusGroup === 'IGNORED')}
           >
-            Ignorados
+            {t.tabIgnored}
           </button>
           <button
             type="button"
@@ -483,7 +509,7 @@ export const App: React.FC = () => {
             }}
             style={anchorTabButtonStyle(statusGroup === 'ALL')}
           >
-            Todos os movimentos
+            {t.tabAll}
           </button>
         </div>
       </header>
@@ -507,7 +533,7 @@ export const App: React.FC = () => {
               color: '#1d2d3e',
             }}
           >
-            Geral
+            {t.sectionGeneral}
           </h2>
 
           {/* Top White Rounded Filter & Selection Card (2-column SAP Horizon Form Grid) */}
@@ -520,9 +546,9 @@ export const App: React.FC = () => {
               }}
             >
               <div>
-                <div style={fioriSubGroupTitleStyle}>Conta bancária e estado</div>
+                <div style={fioriSubGroupTitleStyle}>{t.subBankAndState}</div>
                 <div style={fioriFormGridStyle}>
-                  <span style={fioriFormLabelStyle}>Banco da empresa:</span>
+                  <span style={fioriFormLabelStyle}>{t.houseBankLabel}</span>
                   <Select
                     style={{ width: '100%' }}
                     onChange={(e) => {
@@ -531,7 +557,7 @@ export const App: React.FC = () => {
                     }}
                   >
                     <Option data-bank-id="ALL" selected={selectedBankId === 'ALL'}>
-                      Todas as contas ({houseBanks.length})
+                      {t.allAccountsOption} ({houseBanks.length})
                     </Option>
                     {houseBanks.map((hb) => (
                       <Option key={hb.id} data-bank-id={hb.id} selected={selectedBankId === hb.id}>
@@ -540,7 +566,7 @@ export const App: React.FC = () => {
                     ))}
                   </Select>
 
-                  <span style={fioriFormLabelStyle}>Estado do movimento:</span>
+                  <span style={fioriFormLabelStyle}>{t.movementStateLabel}</span>
                   <Select
                     style={{ width: '100%' }}
                     onChange={(e) => {
@@ -554,33 +580,33 @@ export const App: React.FC = () => {
                     }}
                   >
                     <Option data-status="PENDING" selected={statusGroup === 'PENDING'}>
-                      Em aberto / Por reconciliar
+                      {t.tabPending}
                     </Option>
                     <Option data-status="RECONCILED" selected={statusGroup === 'RECONCILED'}>
-                      Reconciliados
+                      {t.tabReconciled}
                     </Option>
                     <Option data-status="IGNORED" selected={statusGroup === 'IGNORED'}>
-                      Ignorados
+                      {t.tabIgnored}
                     </Option>
                     <Option data-status="ALL" selected={statusGroup === 'ALL'}>
-                      Todos
+                      {t.confAll}
                     </Option>
                   </Select>
                 </div>
               </div>
 
               <div>
-                <div style={fioriSubGroupTitleStyle}>Filtros de pesquisa e correspondência</div>
+                <div style={fioriSubGroupTitleStyle}>{t.subSearchAndMatch}</div>
                 <div style={fioriFormGridStyle}>
-                  <span style={fioriFormLabelStyle}>Procurar movimento:</span>
+                  <span style={fioriFormLabelStyle}>{t.searchMovementLabel}</span>
                   <Input
-                    placeholder="Descrição, NIF, IBAN, Multibanco, Nº Doc, Valor..."
+                    placeholder={t.searchPlaceholder}
                     value={search}
                     style={{ width: '100%' }}
                     onInput={(e) => setSearch((e.target as unknown as { value: string }).value)}
                   />
 
-                  <span style={fioriFormLabelStyle}>Nível de confiança:</span>
+                  <span style={fioriFormLabelStyle}>{t.confidenceLevelLabel}</span>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <Select
                       style={{ flex: 1 }}
@@ -595,16 +621,16 @@ export const App: React.FC = () => {
                       }}
                     >
                       <Option data-conf="ALL" selected={confidenceFilter === 'ALL'}>
-                        Todos
+                        {t.confAll}
                       </Option>
                       <Option data-conf="HIGH" selected={confidenceFilter === 'HIGH'}>
-                        Automático / Elevada (≥85%)
+                        {t.confHigh}
                       </Option>
                       <Option data-conf="REVIEW" selected={confidenceFilter === 'REVIEW'}>
-                        Revisão recomendada (50%–84%)
+                        {t.confReview}
                       </Option>
                       <Option data-conf="NONE" selected={confidenceFilter === 'NONE'}>
-                        Sem correspondência direta
+                        {t.confNone}
                       </Option>
                     </Select>
                     {(search ||
@@ -620,7 +646,7 @@ export const App: React.FC = () => {
                           setConfidenceFilter('ALL');
                         }}
                       >
-                        Repor
+                        {t.resetBtn}
                       </Button>
                     )}
                   </div>
@@ -660,18 +686,18 @@ export const App: React.FC = () => {
               }}
             >
               <div style={{ fontSize: '14px', fontWeight: 700, color: '#1d2d3e' }}>
-                Linhas do extrato bancário ({displayedLines.length})
+                {t.statementLinesTitle} ({displayedLines.length})
               </div>
               <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                 <Button design="Transparent" onClick={() => setUploadOpen(true)}>
-                  Importar ficheiro
+                  {t.importFileBtn}
                 </Button>
                 <Button
                   design="Transparent"
                   disabled={displayedLines.length === 0}
                   onClick={handleExportCsv}
                 >
-                  Exportar CSV
+                  {t.exportCsvBtn}
                 </Button>
               </div>
             </div>
@@ -690,17 +716,15 @@ export const App: React.FC = () => {
                     color: '#1d2d3e',
                   }}
                 >
-                  Não foram encontrados movimentos bancários
+                  {t.noMovementsTitle}
                 </div>
-                <div style={{ fontSize: '13px', marginBottom: '16px' }}>
-                  Importe um ficheiro de extrato bancário (SWIFT MT940 ou Norma 43) ou ajuste os filtros acima.
-                </div>
+                <div style={{ fontSize: '13px', marginBottom: '16px' }}>{t.noMovementsDesc}</div>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
                   <Button design="Emphasized" onClick={() => setUploadOpen(true)}>
-                    Importar extrato
+                    {t.importStatementBtn}
                   </Button>
                   <Button design="Default" onClick={() => void handleLoadSamples()}>
-                    Carregar dados de demonstração
+                    {t.loadSampleBtn}
                   </Button>
                 </div>
               </div>
@@ -717,15 +741,17 @@ export const App: React.FC = () => {
                         fontSize: '12px',
                       }}
                     >
-                      <th style={{ padding: '10px 14px', fontWeight: 600 }}>Data</th>
-                      <th style={{ padding: '10px 10px', fontWeight: 600 }}>Conta</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 600 }}>{t.colDate}</th>
+                      <th style={{ padding: '10px 10px', fontWeight: 600 }}>{t.colAccount}</th>
                       <th style={{ padding: '10px 12px', fontWeight: 600 }}>
-                        Descrição e parceiro sugerido
+                        {t.colDescAndPartner}
                       </th>
                       <th style={{ padding: '10px 12px', fontWeight: 600, textAlign: 'right' }}>
-                        Montante
+                        {t.colAmount}
                       </th>
-                      <th style={{ padding: '10px 12px', fontWeight: 600 }}>Estado / Sugestão</th>
+                      <th style={{ padding: '10px 12px', fontWeight: 600 }}>
+                        {t.colStateSuggestion}
+                      </th>
                       <th style={{ padding: '10px 8px', width: '18px' }} />
                     </tr>
                   </thead>
@@ -822,14 +848,14 @@ export const App: React.FC = () => {
                           >
                             {l.status === 'RECONCILED' ? (
                               <ObjectStatus state="Positive" showDefaultIcon>
-                                Reconciliado
+                                {t.statusReconciled}
                               </ObjectStatus>
                             ) : l.status === 'ERROR' ? (
                               <ObjectStatus state="Negative" showDefaultIcon>
-                                Erro
+                                {t.statusError}
                               </ObjectStatus>
                             ) : l.status === 'IGNORED' ? (
-                              <ObjectStatus state="None">Ignorado</ObjectStatus>
+                              <ObjectStatus state="None">{t.statusIgnored}</ObjectStatus>
                             ) : topSug ? (
                               <ObjectStatus
                                 state={
@@ -841,10 +867,11 @@ export const App: React.FC = () => {
                                 }
                                 showDefaultIcon
                               >
-                                {topSug.confidence}% ({topSug.tier === 'HIGH' ? 'Automático' : 'Rever'})
+                                {topSug.confidence}% (
+                                {topSug.tier === 'HIGH' ? t.tierAuto : t.tierReview})
                               </ObjectStatus>
                             ) : (
-                              <ObjectStatus state="None">Manual</ObjectStatus>
+                              <ObjectStatus state="None">{t.statusManual}</ObjectStatus>
                             )}
                           </td>
                           <td
@@ -908,11 +935,12 @@ export const App: React.FC = () => {
           }}
         >
           <span>
-            Em aberto: <strong style={{ color: '#1d2d3e' }}>{summary?.totalUnreconciled ?? 0}</strong>
+            {t.openFooterLabel}:{' '}
+            <strong style={{ color: '#1d2d3e' }}>{summary?.totalUnreconciled ?? 0}</strong>
           </span>
           <span>|</span>
           <span>
-            Automáticos prontos (≥85%):{' '}
+            {t.autoReadyFooterLabel}:{' '}
             <strong style={{ color: '#107e3e' }}>{summary?.highConfidenceReady ?? 0}</strong>
           </span>
         </div>
@@ -923,17 +951,17 @@ export const App: React.FC = () => {
             disabled={batchBusy || !summary || summary.highConfidenceReady === 0}
             onClick={() => void handleBatchApprove()}
           >
-            Reconciliar automáticos ({summary?.highConfidenceReady ?? 0}) | ⌄
+            {t.reconcileAutoBtn} ({summary?.highConfidenceReady ?? 0}) | ⌄
           </Button>
           <Button design="Default" onClick={() => setUploadOpen(true)}>
-            Importar extrato
+            {t.importStatementBtn}
           </Button>
           <Button
             design="Transparent"
             disabled={displayedLines.length === 0}
             onClick={handleExportCsv}
           >
-            Exportar CSV
+            {t.exportCsvBtn}
           </Button>
         </div>
       </footer>
@@ -962,7 +990,7 @@ export const App: React.FC = () => {
         onSaved={() => {
           setBanner({
             type: 'Positive',
-            text: 'Configuração de ligação SAP HANA & Service Layer atualizada.',
+            text: 'SAP HANA & Service Layer configuration updated.',
           });
           void refreshAll();
         }}

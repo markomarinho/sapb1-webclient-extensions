@@ -12,6 +12,7 @@ import {
   Tag,
 } from '@ui5/webcomponents-react';
 import { formatMoney } from '../api';
+import { useI18n } from '../i18n';
 
 interface DeliveryDetailsDialogProps {
   delivery: OpenDeliveryNote | null;
@@ -21,6 +22,7 @@ interface DeliveryDetailsDialogProps {
 type ModalTab = 'ITEMS' | 'LINES' | 'GENERAL';
 
 export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDialogProps) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<ModalTab>('ITEMS');
 
   const validation = delivery
@@ -36,15 +38,15 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
       open={Boolean(delivery)}
       headerText={
         delivery
-          ? `Guia de remessa GR ${delivery.docNum} — ${delivery.cardName}`
-          : 'Guia de remessa'
+          ? `${t.deliveryDetailsHeader} GR ${delivery.docNum} — ${delivery.cardName}`
+          : t.deliveryDetailsHeader
       }
       onClose={onClose}
       footer={
         <Bar
           endContent={
             <Button design="Emphasized" onClick={onClose}>
-              Fechar
+              {t.closeBtn}
             </Button>
           }
         />
@@ -68,32 +70,34 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
           <div style={{ background: '#ffffff', padding: '16px 28px 18px 28px' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '32px', alignItems: 'flex-start' }}>
               <div style={facetColStyle}>
-                <span style={facetLabelStyle}>Parceiro de negócios</span>
+                <span style={facetLabelStyle}>{t.colBusinessPartner}</span>
                 <span style={facetValueStyle}>{delivery.cardName}</span>
                 <span style={facetSubStyle}>
-                  {delivery.cardCode} • NIF: {delivery.federalTaxId || '—'}
+                  {delivery.cardCode} • {t.taxIdShort}: {delivery.federalTaxId || '—'}
                 </span>
               </div>
 
               <div style={facetColStyle}>
-                <span style={facetLabelStyle}>Datas do documento</span>
+                <span style={facetLabelStyle}>{t.facetDocumentDates}</span>
                 <span style={facetValueStyle}>{delivery.docDate}</span>
-                <span style={facetSubStyle}>Vencimento: {delivery.docDueDate}</span>
+                <span style={facetSubStyle}>
+                  {t.dueDateLabel}: {delivery.docDueDate}
+                </span>
               </div>
 
               <div style={facetColStyle}>
-                <span style={facetLabelStyle}>Valor líquido / Total</span>
+                <span style={facetLabelStyle}>{t.facetNetTotal}</span>
                 <span style={facetValueStyle}>
                   {formatMoney(delivery.docTotal, delivery.docCurrency)}
                 </span>
                 <span style={facetSubStyle}>
-                  Líq.: {formatMoney(netSubTotal, delivery.docCurrency)} • IVA:{' '}
+                  {t.netShort}: {formatMoney(netSubTotal, delivery.docCurrency)} • {t.vatShort}:{' '}
                   {formatMoney(delivery.vatSum, delivery.docCurrency)}
                 </span>
               </div>
 
               <div style={{ ...facetColStyle, minWidth: '170px' }}>
-                <span style={facetLabelStyle}>Margem mínima do documento</span>
+                <span style={facetLabelStyle}>{t.facetMinDocMargin}</span>
                 <span
                   style={{
                     ...facetValueStyle,
@@ -103,7 +107,7 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
                   {validation.lowestItemMarginPercent !== null
                     ? `${validation.lowestItemMarginPercent.toFixed(1)}%`
                     : '—'}{' '}
-                  (Mín. exigido: {validation.minMarginThreshold}%)
+                  ({t.minRequiredShort}: {validation.minMarginThreshold}%)
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
                   <div
@@ -164,21 +168,21 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
               onClick={() => setActiveTab('ITEMS')}
               style={modalTabStyle(activeTab === 'ITEMS')}
             >
-              Análise de preços e margens por artigo ({validation.itemSummaries.length})
+              {t.tabItemAnalysis} ({validation.itemSummaries.length})
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('LINES')}
               style={modalTabStyle(activeTab === 'LINES')}
             >
-              Linhas do documento ({validation.lineResults.length})
+              {t.tabDocLines} ({validation.lineResults.length})
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('GENERAL')}
               style={modalTabStyle(activeTab === 'GENERAL')}
             >
-              Geral
+              {t.sectionGeneral}
             </button>
           </div>
 
@@ -187,7 +191,9 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
             {!validation.passed && (
               <MessageStrip design="Critical" hideCloseButton>
                 <div>
-                  <strong>Alertas de validação comercial ({validation.warnings.length}):</strong>
+                  <strong>
+                    {t.commercialValidationAlerts} ({validation.warnings.length}):
+                  </strong>
                   <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
                     {validation.warnings.map((w, idx) => (
                       <li key={idx}>{w}</li>
@@ -200,7 +206,7 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
             {activeTab === 'ITEMS' && (
               <div style={whiteCardStyle}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: '#1d2d3e', marginBottom: '12px' }}>
-                  Resumo por artigo (média calculada quando existem múltiplas linhas do mesmo artigo)
+                  {t.itemSummaryTitle}
                 </div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -214,14 +220,14 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
                           fontSize: '12px',
                         }}
                       >
-                        <th style={{ padding: '9px' }}>Artigo</th>
-                        <th style={{ padding: '9px' }}>Linhas / Qtd.</th>
-                        <th style={{ padding: '9px', textAlign: 'right' }}>Preço médio atual</th>
-                        <th style={{ padding: '9px', textAlign: 'right' }}>Últ. preço faturado</th>
-                        <th style={{ padding: '9px' }}>Controlo de preço</th>
-                        <th style={{ padding: '9px', textAlign: 'right' }}>Custo médio</th>
-                        <th style={{ padding: '9px', textAlign: 'right' }}>Margem média (%)</th>
-                        <th style={{ padding: '9px' }}>Controlo de margem</th>
+                        <th style={{ padding: '9px' }}>{t.colItem}</th>
+                        <th style={{ padding: '9px' }}>{t.colRowsQty}</th>
+                        <th style={{ padding: '9px', textAlign: 'right' }}>{t.colAvgCurrentPrice}</th>
+                        <th style={{ padding: '9px', textAlign: 'right' }}>{t.colLastInvoicedPrice}</th>
+                        <th style={{ padding: '9px' }}>{t.colPriceControl}</th>
+                        <th style={{ padding: '9px', textAlign: 'right' }}>{t.colAvgCost}</th>
+                        <th style={{ padding: '9px', textAlign: 'right' }}>{t.colAvgMargin} (%)</th>
+                        <th style={{ padding: '9px' }}>{t.colMarginControl}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -236,7 +242,9 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
                           <td style={{ padding: '9px' }}>
                             <div>{item.totalQuantity} un.</div>
                             {item.rowCount > 1 && (
-                              <Tag design="Information">{item.rowCount} linhas (média)</Tag>
+                              <Tag design="Information">
+                                {item.rowCount} {t.rowsAvgBadge}
+                              </Tag>
                             )}
                           </td>
                           <td style={{ padding: '9px', textAlign: 'right', fontWeight: 700 }}>
@@ -256,19 +264,19 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
                                 )}
                               </div>
                             ) : (
-                              <span style={{ color: '#556b82' }}>Sem histórico</span>
+                              <span style={{ color: '#556b82' }}>{t.noHistory}</span>
                             )}
                           </td>
                           <td style={{ padding: '9px' }}>
                             {item.lastInvoicedPrice === null ? (
-                              <Tag design="Neutral">Sem histórico</Tag>
+                              <Tag design="Neutral">{t.noHistory}</Tag>
                             ) : item.priceMatchesLastInvoice ? (
                               <ObjectStatus state="Positive" showDefaultIcon>
-                                Igual à últ. fatura
+                                {t.sameAsLastInvoice}
                               </ObjectStatus>
                             ) : (
                               <ObjectStatus state="Critical" showDefaultIcon>
-                                Diferente ({item.priceDiff && item.priceDiff > 0 ? '+' : ''}
+                                {t.differentPrefix} ({item.priceDiff && item.priceDiff > 0 ? '+' : ''}
                                 {formatMoney(item.priceDiff ?? 0, delivery.docCurrency)})
                               </ObjectStatus>
                             )}
@@ -293,7 +301,7 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
                               </ObjectStatus>
                             ) : (
                               <ObjectStatus state="Negative" showDefaultIcon>
-                                Abaixo de {validation.minMarginThreshold}%
+                                {t.belowPrefix} {validation.minMarginThreshold}%
                               </ObjectStatus>
                             )}
                           </td>
@@ -308,7 +316,7 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
             {activeTab === 'LINES' && (
               <div style={whiteCardStyle}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: '#1d2d3e', marginBottom: '12px' }}>
-                  Detalhe das linhas da guia de remessa ({validation.lineResults.length})
+                  {t.linesDetailTitle} ({validation.lineResults.length})
                 </div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -323,15 +331,15 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
                         }}
                       >
                         <th style={{ padding: '8px' }}>#</th>
-                        <th style={{ padding: '8px' }}>Artigo</th>
-                        <th style={{ padding: '8px' }}>Armazém</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>Qtd.</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>Preço líq.</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>Últ. fatura</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>Custo unit.</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>Margem (€)</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>Margem (%)</th>
-                        <th style={{ padding: '8px', textAlign: 'right' }}>Total linha</th>
+                        <th style={{ padding: '8px' }}>{t.colItem}</th>
+                        <th style={{ padding: '8px' }}>{t.colWarehouse}</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Qty.</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>{t.colNetPrice}</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>{t.colLastInvoiceShort}</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>{t.colUnitCost}</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>{t.colMarginEur}</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>{t.colMarginPct}</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>{t.colLineTotal}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -400,33 +408,33 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
                 >
                   <div>
                     <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>
-                      Informações básicas
+                      {t.basicInfoTitle}
                     </div>
                     <div style={kvGridStyle}>
-                      <span style={kvLabelStyle}>Código do cliente:</span>
+                      <span style={kvLabelStyle}>{t.customerCodeLabel}</span>
                       <span style={kvValStyle}>{delivery.cardCode}</span>
-                      <span style={kvLabelStyle}>Nome do cliente:</span>
+                      <span style={kvLabelStyle}>{t.customerNameLabel}</span>
                       <span style={kvValStyle}>{delivery.cardName}</span>
-                      <span style={kvLabelStyle}>NIF:</span>
+                      <span style={kvLabelStyle}>{t.taxIdShort}:</span>
                       <span style={kvValStyle}>{delivery.federalTaxId || '—'}</span>
-                      <span style={kvLabelStyle}>Moeda:</span>
+                      <span style={kvLabelStyle}>{t.currencyLabel}</span>
                       <span style={kvValStyle}>{delivery.docCurrency}</span>
                     </div>
                   </div>
                   <div>
                     <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>
-                      Informações adicionais
+                      {t.additionalInfoTitle}
                     </div>
                     <div style={kvGridStyle}>
-                      <span style={kvLabelStyle}>Nº documento:</span>
+                      <span style={kvLabelStyle}>{t.colDocNum}:</span>
                       <span style={kvValStyle}>
                         GR {delivery.docNum} (DocEntry #{delivery.docEntry})
                       </span>
-                      <span style={kvLabelStyle}>Ref. do cliente:</span>
+                      <span style={kvLabelStyle}>{t.customerRefLabel}</span>
                       <span style={kvValStyle}>{delivery.numAtCard || '—'}</span>
-                      <span style={kvLabelStyle}>E-mail principal:</span>
+                      <span style={kvLabelStyle}>{t.mainEmailLabel}</span>
                       <span style={kvValStyle}>{delivery.customerEmail || '—'}</span>
-                      <span style={kvLabelStyle}>Observações:</span>
+                      <span style={kvLabelStyle}>{t.commentsLabel}</span>
                       <span style={kvValStyle}>{delivery.comments || '—'}</span>
                     </div>
                   </div>

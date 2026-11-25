@@ -20,7 +20,6 @@ import {
   CheckBox,
   Dialog,
   Input,
-  Label,
   MessageStrip,
   ObjectStatus,
   Option,
@@ -33,27 +32,30 @@ import { AuditLogDialog } from './components/AuditLogDialog';
 import { DeliveryDetailsDialog } from './components/DeliveryDetailsDialog';
 import { EmailPreviewDialog } from './components/EmailPreviewDialog';
 import { SettingsDialog } from './components/SettingsDialog';
+import { useI18n, type D2ITranslationDictionary, type LocalePreference } from './i18n';
 
 type ActiveSectionTab = 'DELIVERIES' | 'VALIDATION' | 'HISTORY';
 
 function statusBadge(
-  status: ConversionItemStatus
+  status: ConversionItemStatus,
+  t: D2ITranslationDictionary
 ): { text: string; state: 'Positive' | 'Critical' | 'Negative' | 'Information' } {
   switch (status) {
     case 'INVOICED_AND_EMAILED':
-      return { text: 'Faturada e Enviada', state: 'Positive' };
+      return { text: t.statusInvoicedAndEmailed, state: 'Positive' };
     case 'INVOICED_ONLY':
-      return { text: 'Apenas Faturada', state: 'Information' };
+      return { text: t.statusInvoicedOnly, state: 'Information' };
     case 'INVOICED_NO_EMAIL':
-      return { text: 'Sem E-mail', state: 'Critical' };
+      return { text: t.statusNoEmail, state: 'Critical' };
     case 'INVOICED_EMAIL_FAILED':
-      return { text: 'Falha no E-mail', state: 'Negative' };
+      return { text: t.statusEmailFailed, state: 'Negative' };
     case 'FAILED':
-      return { text: 'Erro', state: 'Negative' };
+      return { text: t.statusFailed, state: 'Negative' };
   }
 }
 
 export function App() {
+  const { t, locale, preference, detectedLocale, setPreference } = useI18n();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [settings, setSettings] = useState<AutomationSettings | null>(null);
   const [deliveries, setDeliveries] = useState<OpenDeliveryNote[]>([]);
@@ -277,15 +279,15 @@ export function App() {
       });
       setBanner({
         design: res.failedCount > 0 ? 'Information' : 'Positive',
-        text: `Processadas ${res.processedCount} guia(s): ${res.invoicesCreated} fatura(s) criada(s), ${res.emailsSent} e-mail(s) enviado(s)${
-          res.failedCount > 0 ? `, ${res.failedCount} alerta(s)/falha(s).` : '.'
+        text: `${res.processedCount} -> ${res.invoicesCreated} OINV, ${res.emailsSent} email(s)${
+          res.failedCount > 0 ? ` (${res.failedCount} !)` : '.'
         }`,
       });
       await refreshAll();
     } catch (err) {
       setBanner({
         design: 'Negative',
-        text: err instanceof Error ? err.message : 'Erro ao converter guias de remessa.',
+        text: err instanceof Error ? err.message : 'Error',
       });
     } finally {
       setBusyAction(false);
@@ -299,16 +301,13 @@ export function App() {
       const res = await api.runScheduledNow();
       setBanner({
         design: res.processedCount > 0 ? 'Positive' : 'Information',
-        text:
-          res.processedCount === 0
-            ? 'Job automático executado: nenhuma guia elegível encontrada.'
-            : `Job automático concluído: ${res.processedCount} guia(s) -> ${res.invoicesCreated} fatura(s), ${res.emailsSent} e-mail(s) enviado(s).`,
+        text: `${res.processedCount} -> ${res.invoicesCreated} OINV, ${res.emailsSent} email(s).`,
       });
       await refreshAll();
     } catch (err) {
       setBanner({
         design: 'Negative',
-        text: err instanceof Error ? err.message : 'Erro ao executar job automático.',
+        text: err instanceof Error ? err.message : 'Error',
       });
     } finally {
       setBusyAction(false);
@@ -328,17 +327,17 @@ export function App() {
         design: res.conversion.status === 'INVOICED_AND_EMAILED' ? 'Positive' : 'Negative',
         text:
           res.conversion.status === 'INVOICED_AND_EMAILED'
-            ? `E-mail da Fatura #${res.conversion.invoiceDocNum} enviado para ${res.conversion.recipientEmail}${
+            ? `FT #${res.conversion.invoiceDocNum} -> ${res.conversion.recipientEmail}${
                 res.conversion.recipientName ? ` (${res.conversion.recipientName})` : ''
               }.`
-            : res.conversion.errorMessage || 'Falha ao reenviar e-mail.',
+            : res.conversion.errorMessage || 'Error',
       });
       setRetryTarget(null);
       await refreshAll();
     } catch (err) {
       setBanner({
         design: 'Negative',
-        text: err instanceof Error ? err.message : 'Erro ao reenviar e-mail.',
+        text: err instanceof Error ? err.message : 'Error',
       });
     } finally {
       setBusyAction(false);
@@ -394,36 +393,30 @@ export function App() {
                 letterSpacing: '-0.2px',
               }}
             >
-              Faturação automática de guias de remessa
+              {t.appTitle}
             </h1>
-            <span style={{ fontSize: '13px', color: '#556b82' }}>
-              ODLN → OINV
-            </span>
+            <span style={{ fontSize: '13px', color: '#556b82' }}>{t.appSubtitle}</span>
           </div>
 
           {/* Right Header Action Links (SAP Horizon style) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <Button
               design="Transparent"
               icon="play"
               onClick={() => void handleRunScheduledNow()}
               disabled={busyAction}
             >
-              Executar job automático
+              {t.runAutoJob}
             </Button>
             <Button
               design="Transparent"
               icon="action-settings"
               onClick={() => setSettingsOpen(true)}
             >
-              Editar definições de automação
+              {t.editAutomationSettings}
             </Button>
-            <Button
-              design="Transparent"
-              icon="history"
-              onClick={() => setAuditOpen(true)}
-            >
-              Auditoria
+            <Button design="Transparent" icon="history" onClick={() => setAuditOpen(true)}>
+              {t.auditLog}
             </Button>
             <Button
               design="Transparent"
@@ -431,12 +424,37 @@ export function App() {
               onClick={() => void refreshAll()}
               disabled={loading}
             >
-              Atualizar
+              {t.refresh}
             </Button>
+            <Select
+              style={{ width: '165px' }}
+              onChange={(e) => {
+                const val = e.detail.selectedOption?.getAttribute('data-lang') as
+                  | LocalePreference
+                  | undefined;
+                if (val) setPreference(val);
+              }}
+            >
+              <Option data-lang="auto" selected={preference === 'auto'}>
+                {t.langAutoPrefix}: {detectedLocale.toUpperCase()})
+              </Option>
+              <Option data-lang="pt" selected={preference === 'pt'}>
+                Português (PT)
+              </Option>
+              <Option data-lang="en" selected={preference === 'en'}>
+                English (EN)
+              </Option>
+              <Option data-lang="es" selected={preference === 'es'}>
+                Español (ES)
+              </Option>
+              <Option data-lang="de" selected={preference === 'de'}>
+                Deutsch (DE)
+              </Option>
+            </Select>
           </div>
         </div>
 
-        {/* ObjectPage Header Facets (matches SAP B1 Web Client "Parceiro de negócios" header layout) */}
+        {/* ObjectPage Header Facets */}
         {headerExpanded && summary && (
           <div
             style={{
@@ -448,20 +466,20 @@ export function App() {
             }}
           >
             <div style={fioriFacetStyle}>
-              <span style={fioriFacetLabelStyle}>Informações gerais</span>
+              <span style={fioriFacetLabelStyle}>{t.facetGeneralInfo}</span>
               <span style={fioriFacetValueStyle}>
-                {summary.b1Mode === 'live' ? 'SAP B1 Service Layer' : 'Modo Simulação (Mock)'}
+                {summary.b1Mode === 'live' ? t.b1LiveMode : t.b1MockMode}
               </span>
               <span style={{ fontSize: '12px', color: '#556b82' }}>
-                E-mail: {summary.emailMode.toUpperCase()} • Agendador:{' '}
-                {summary.schedulerEnabled ? 'Ativo' : 'Inativo'}
+                {t.emailLabel}: {summary.emailMode.toUpperCase()} • {t.schedulerLabel}:{' '}
+                {summary.schedulerEnabled ? t.active : t.inactive}
               </span>
             </div>
 
             <div style={fioriFacetStyle}>
-              <span style={fioriFacetLabelStyle}>Guias de remessa</span>
+              <span style={fioriFacetLabelStyle}>{t.facetOpenDeliveries}</span>
               <span style={fioriFacetValueStyle}>
-                {summary.openDeliveriesCount} em aberto
+                {summary.openDeliveriesCount} {t.openCountSuffix}
               </span>
               <span style={{ fontSize: '12px', color: '#556b82' }}>
                 {formatMoney(summary.openDeliveriesTotal)}
@@ -469,43 +487,45 @@ export function App() {
             </div>
 
             <div style={fioriFacetStyle}>
-              <span style={fioriFacetLabelStyle}>Elegíveis auto-fatura</span>
+              <span style={fioriFacetLabelStyle}>{t.facetEligibleAuto}</span>
               <span style={{ ...fioriFacetValueStyle, color: '#0064d9' }}>
-                {summary.eligibleAutoCount} guia(s)
+                {summary.eligibleAutoCount} {t.deliveryUnit}
               </span>
               <span style={{ fontSize: '12px', color: '#556b82' }}>
-                Grupo e-mail: {settings?.defaultEmlGrpCode || 'Principal'}
+                {t.emailGroupLabel}: {settings?.defaultEmlGrpCode || t.mainEmailShort}
               </span>
             </div>
 
             <div style={fioriFacetStyle}>
-              <span style={fioriFacetLabelStyle}>Faturas emitidas hoje</span>
+              <span style={fioriFacetLabelStyle}>{t.facetInvoicedToday}</span>
               <span style={{ ...fioriFacetValueStyle, color: '#256f3a' }}>
                 {summary.invoicedTodayCount}
               </span>
               <span style={{ fontSize: '12px', color: '#556b82' }}>
-                E-mails enviados: {summary.emailsSentCount}
+                {t.emailsSentLabel}: {summary.emailsSentCount}
               </span>
             </div>
 
             <div style={fioriFacetStyle}>
-              <span style={fioriFacetLabelStyle}>Alertas / falhas de e-mail</span>
+              <span style={fioriFacetLabelStyle}>{t.facetEmailAlerts}</span>
               <span
                 style={{
                   ...fioriFacetValueStyle,
                   color: summary.emailFailedCount > 0 ? '#aa0808' : '#1d2d3e',
                 }}
               >
-                {summary.emailFailedCount > 0 ? `${summary.emailFailedCount} alerta(s)` : '--- ---'}
+                {summary.emailFailedCount > 0
+                  ? `${summary.emailFailedCount} ${t.alertUnit}`
+                  : '--- ---'}
               </span>
               <span style={{ fontSize: '12px', color: '#556b82' }}>
-                Margem mín.: {settings?.minimumMarginPercent ?? 30}%
+                {t.minMarginShort}: {settings?.minimumMarginPercent ?? 30}%
               </span>
             </div>
 
-            {/* SAP Fiori Micro-Progress Bar Facet (like "Utilização limite de crédito" in example.html) */}
+            {/* SAP Fiori Micro-Progress Bar Facet */}
             <div style={{ ...fioriFacetStyle, minWidth: '175px' }}>
-              <span style={fioriFacetLabelStyle}>Conformidade preços e margens</span>
+              <span style={fioriFacetLabelStyle}>{t.facetPriceMarginCompliance}</span>
               <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#1d2d3e' }}>
                 {validationStats.compliancePct}% ({validationStats.okCount}/{openDeliveries.length})
               </span>
@@ -544,8 +564,8 @@ export function App() {
                   }}
                   title={
                     validationStats.warningCount === 0
-                      ? 'Todas as guias cumprem preços e margens'
-                      : `${validationStats.warningCount} guia(s) com alerta de preço ou margem`
+                      ? t.allDeliveriesComply
+                      : `${validationStats.warningCount} ${t.deliveriesWithAlerts}`
                   }
                 >
                   {validationStats.warningCount === 0 ? '✓' : '!'}
@@ -555,7 +575,7 @@ export function App() {
           </div>
         )}
 
-        {/* Center Collapse Chevron Divider Bar (straddles divider line with overflow: visible) */}
+        {/* Center Collapse Chevron Divider Bar */}
         <div
           style={{
             position: 'relative',
@@ -579,7 +599,7 @@ export function App() {
           <button
             type="button"
             onClick={() => setHeaderExpanded((v) => !v)}
-            title={headerExpanded ? 'Ocultar cabeçalho' : 'Expandir cabeçalho'}
+            title={headerExpanded ? t.headerCollapse : t.headerExpand}
             style={{
               position: 'relative',
               zIndex: 2,
@@ -603,7 +623,7 @@ export function App() {
           </button>
         </div>
 
-        {/* Anchor Tab Bar (exact SAP Horizon ObjectPage AnchorBar) */}
+        {/* Anchor Tab Bar */}
         <div
           style={{
             borderBottom: '2px solid #0032a5',
@@ -615,28 +635,26 @@ export function App() {
             overflowX: 'auto',
           }}
         >
-
           <button
             type="button"
             onClick={() => setActiveTab('DELIVERIES')}
             style={anchorTabButtonStyle(activeTab === 'DELIVERIES')}
           >
-            Guias de remessa ({filteredDeliveries.length})
+            {t.tabDeliveries} ({filteredDeliveries.length})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('VALIDATION')}
             style={anchorTabButtonStyle(activeTab === 'VALIDATION')}
           >
-            Controlo de preços e margens ({validationStats.warningCount} alerta
-            {validationStats.warningCount === 1 ? '' : 's'})
+            {t.tabValidation} ({validationStats.warningCount} {t.alertUnit})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('HISTORY')}
             style={anchorTabButtonStyle(activeTab === 'HISTORY')}
           >
-            Histórico e e-mails enviados ({conversions.length})
+            {t.tabHistory} ({conversions.length})
           </button>
         </div>
       </header>
@@ -655,7 +673,6 @@ export function App() {
         <main style={{ padding: '18px 36px 28px 36px' }}>
           {activeTab === 'DELIVERIES' && (
             <>
-              {/* Section Heading outside white card (exact SAP Horizon pattern) */}
               <h2
                 style={{
                   margin: '0 0 12px 4px',
@@ -664,12 +681,10 @@ export function App() {
                   color: '#1d2d3e',
                 }}
               >
-                Geral
+                {t.sectionGeneral}
               </h2>
 
-              {/* White Rounded ObjectPage Card */}
               <div style={horizonWhiteSectionCardStyle}>
-                {/* 2-Column Fiori Form Layout: Parâmetros de Faturação & Filtros */}
                 <div
                   style={{
                     display: 'grid',
@@ -680,11 +695,10 @@ export function App() {
                     borderBottom: '1px solid #ebeef2',
                   }}
                 >
-                  {/* Left Column: Parâmetros de conversão */}
                   <div>
-                    <div style={fioriSubGroupTitleStyle}>Parâmetros de faturação</div>
+                    <div style={fioriSubGroupTitleStyle}>{t.subInvoicingParams}</div>
                     <div style={fioriFormGridStyle}>
-                      <span style={fioriFormLabelStyle}>Modo de agrupamento:</span>
+                      <span style={fioriFormLabelStyle}>{t.groupingModeLabel}</span>
                       <Select
                         style={{ width: '100%' }}
                         onChange={(e) => {
@@ -698,26 +712,26 @@ export function App() {
                           data-value="PER_DELIVERY"
                           selected={groupingMode === 'PER_DELIVERY'}
                         >
-                          1 fatura por guia de remessa
+                          {t.groupingPerDelivery}
                         </Option>
                         <Option
                           data-value="CONSOLIDATED_BY_CUSTOMER"
                           selected={groupingMode === 'CONSOLIDATED_BY_CUSTOMER'}
                         >
-                          Consolidar por parceiro de negócios
+                          {t.groupingConsolidated}
                         </Option>
                       </Select>
 
-                      <span style={fioriFormLabelStyle}>Data do documento (OINV):</span>
+                      <span style={fioriFormLabelStyle}>{t.invoiceDateLabel}</span>
                       <Input
                         type="Text"
-                        placeholder="AAAA-MM-DD"
+                        placeholder="YYYY-MM-DD"
                         value={invoiceDate}
                         style={{ width: '100%' }}
                         onInput={(e) => setInvoiceDate(e.target.value)}
                       />
 
-                      <span style={fioriFormLabelStyle}>Grupo de contacto padrão:</span>
+                      <span style={fioriFormLabelStyle}>{t.defaultContactGroupLabel}</span>
                       <div
                         style={{
                           display: 'flex',
@@ -729,32 +743,31 @@ export function App() {
                         <span style={{ fontSize: '13.5px', color: '#1d2d3e' }}>
                           {settings?.defaultEmlGrpCode
                             ? `${settings.defaultEmlGrpCode} (OCPR.EmlGrpCode)`
-                            : 'Email principal (OCRD.E_Mail)'}
+                            : t.mainEmailOcrd}
                         </span>
                         <button
                           type="button"
                           onClick={() => setSettingsOpen(true)}
                           style={fioriInlineLinkButtonStyle}
                         >
-                          Alterar regra
+                          {t.changeRule}
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  {/* Right Column: Filtros de seleção */}
                   <div>
-                    <div style={fioriSubGroupTitleStyle}>Filtros de pesquisa e validação</div>
+                    <div style={fioriSubGroupTitleStyle}>{t.subSearchAndValidation}</div>
                     <div style={fioriFormGridStyle}>
-                      <span style={fioriFormLabelStyle}>Procurar guia / cliente:</span>
+                      <span style={fioriFormLabelStyle}>{t.searchDeliveryCustomerLabel}</span>
                       <Input
-                        placeholder="Nº guia, CardCode, nome, contacto, e-mail..."
+                        placeholder={t.searchPlaceholder}
                         value={searchQuery}
                         style={{ width: '100%' }}
                         onInput={(e) => setSearchQuery(e.target.value)}
                       />
 
-                      <span style={fioriFormLabelStyle}>Estado de validação:</span>
+                      <span style={fioriFormLabelStyle}>{t.validationStateLabel}</span>
                       <Select
                         style={{ width: '100%' }}
                         onChange={(e) => {
@@ -767,19 +780,19 @@ export function App() {
                         }}
                       >
                         <Option data-value="ALL" selected={validationFilter === 'ALL'}>
-                          Todas as guias ({openDeliveries.length})
+                          {t.filterAllDeliveries} ({openDeliveries.length})
                         </Option>
                         <Option data-value="WARNINGS" selected={validationFilter === 'WARNINGS'}>
-                          Com alertas de preço ou margem ({validationStats.warningCount})
+                          {t.filterWithAlerts} ({validationStats.warningCount})
                         </Option>
                         <Option data-value="OK" selected={validationFilter === 'OK'}>
-                          Sem alertas — Conformes ({validationStats.okCount})
+                          {t.filterCompliant} ({validationStats.okCount})
                         </Option>
                       </Select>
 
-                      <span style={fioriFormLabelStyle}>Elegibilidade automática:</span>
+                      <span style={fioriFormLabelStyle}>{t.autoEligibilityLabel}</span>
                       <CheckBox
-                        text="Apenas clientes com U_AutoInvoice ativo"
+                        text={t.onlyAutoCustomersCheck}
                         checked={onlyAutoFilter}
                         onChange={(e) => setOnlyAutoFilter(Boolean(e.target.checked))}
                       />
@@ -800,11 +813,11 @@ export function App() {
                     }}
                   >
                     <div style={{ ...fioriSubGroupTitleStyle, marginBottom: 0 }}>
-                      Guias de remessa em aberto ({filteredDeliveries.length})
+                      {t.openDeliveriesTableTitle} ({filteredDeliveries.length})
                     </div>
                     <div style={{ fontSize: '12.5px', color: '#556b82' }}>
-                      Selecionadas: <strong>{selectedEntries.size}</strong> guia(s) • Total:{' '}
-                      <strong>{formatMoney(selectedTotalAmount)}</strong>
+                      {t.selectedLabel}: <strong>{selectedEntries.size}</strong> {t.deliveryUnit} •{' '}
+                      {t.totalLabel}: <strong>{formatMoney(selectedTotalAmount)}</strong>
                     </div>
                   </div>
 
@@ -819,7 +832,7 @@ export function App() {
                         border: '1px dashed #d9e0e6',
                       }}
                     >
-                      Nenhuma guia de remessa aberta corresponde aos critérios selecionados.
+                      {t.noDeliveriesFound}
                     </div>
                   ) : (
                     <div style={{ overflowX: 'auto' }}>
@@ -843,18 +856,18 @@ export function App() {
                             <th style={{ padding: '10px 8px', width: '36px' }}>
                               <CheckBox checked={allVisibleSelected} onChange={toggleAllVisible} />
                             </th>
-                            <th style={{ padding: '10px 10px', fontWeight: 600 }}>Nº documento</th>
-                            <th style={{ padding: '10px 10px', fontWeight: 600 }}>Data</th>
+                            <th style={{ padding: '10px 10px', fontWeight: 600 }}>{t.colDocNum}</th>
+                            <th style={{ padding: '10px 10px', fontWeight: 600 }}>{t.colDate}</th>
                             <th style={{ padding: '10px 10px', fontWeight: 600 }}>
-                              Parceiro de negócios
+                              {t.colBusinessPartner}
                             </th>
                             <th style={{ padding: '10px 10px', fontWeight: 600 }}>
-                              Destinatário de e-mail (Dados mestre / Contactos)
+                              {t.colEmailRecipient}
                             </th>
                             <th style={{ padding: '10px 10px', fontWeight: 600 }}>
-                              Controlo de preço e margem
+                              {t.colPriceMarginControl}
                             </th>
-                            <th style={{ padding: '10px 10px', fontWeight: 600 }}>Auto</th>
+                            <th style={{ padding: '10px 10px', fontWeight: 600 }}>{t.colAuto}</th>
                             <th
                               style={{
                                 padding: '10px 10px',
@@ -862,9 +875,9 @@ export function App() {
                                 textAlign: 'right',
                               }}
                             >
-                              Total
+                              {t.colTotal}
                             </th>
-                            <th style={{ padding: '10px 10px', fontWeight: 600 }}>Ações</th>
+                            <th style={{ padding: '10px 10px', fontWeight: 600 }}>{t.colActions}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -908,13 +921,13 @@ export function App() {
                                     GR {d.docNum}
                                   </button>
                                   <div style={{ fontSize: '11.5px', color: '#556b82' }}>
-                                    {d.lines.length} linha(s)
+                                    {d.lines.length} {t.linesUnit}
                                   </div>
                                 </td>
                                 <td style={{ padding: '10px 10px', whiteSpace: 'nowrap' }}>
                                   <div>{d.docDate}</div>
                                   <div style={{ fontSize: '11.5px', color: '#556b82' }}>
-                                    Venc.: {d.docDueDate}
+                                    {t.dueDateShort}: {d.docDueDate}
                                   </div>
                                 </td>
                                 <td style={{ padding: '10px 10px' }}>
@@ -922,8 +935,8 @@ export function App() {
                                     {d.cardName}
                                   </div>
                                   <div style={{ fontSize: '12px', color: '#556b82' }}>
-                                    {d.cardCode} • NIF: {d.federalTaxId || '—'}
-                                    {d.numAtCard ? ` • Ref: ${d.numAtCard}` : ''}
+                                    {d.cardCode} • {t.taxIdShort}: {d.federalTaxId || '—'}
+                                    {d.numAtCard ? ` • ${t.refShort}: ${d.numAtCard}` : ''}
                                   </div>
                                 </td>
                                 <td style={{ padding: '10px 10px', minWidth: '295px' }}>
@@ -965,13 +978,15 @@ export function App() {
                                       <div style={{ fontSize: '11.5px', color: '#556b82' }}>
                                         {resolved.contactName ? (
                                           <span>
-                                            Saudação personalizada:{' '}
+                                            {t.customGreeting}:{' '}
                                             <strong style={{ color: '#0064d9' }}>
                                               {resolved.contactName}
                                             </strong>
                                           </span>
                                         ) : (
-                                          <span>Saudação geral: {d.cardName}</span>
+                                          <span>
+                                            {t.generalGreeting}: {d.cardName}
+                                          </span>
                                         )}
                                       </div>
                                     </div>
@@ -979,7 +994,7 @@ export function App() {
                                     <span>{resolved.email}</span>
                                   ) : (
                                     <ObjectStatus state="Critical" showDefaultIcon>
-                                      Sem e-mail configurado
+                                      {t.noEmailConfigured}
                                     </ObjectStatus>
                                   )}
                                 </td>
@@ -996,12 +1011,12 @@ export function App() {
                                     title={
                                       validation.warnings.length > 0
                                         ? validation.warnings.join('\n')
-                                        : 'Clique para inspecionar preços e margens'
+                                        : t.pricesAndMarginsBtn
                                     }
                                   >
                                     {validation.passed ? (
                                       <ObjectStatus state="Positive" showDefaultIcon>
-                                        Conforme (Margem mín.{' '}
+                                        {t.compliantMargin}{' '}
                                         {validation.lowestItemMarginPercent?.toFixed(1) ?? '—'}%)
                                       </ObjectStatus>
                                     ) : (
@@ -1013,11 +1028,11 @@ export function App() {
                                         }}
                                       >
                                         {validation.hasPriceWarning && (
-                                          <Tag design="Critical">Preço ≠ Últ. Fatura</Tag>
+                                          <Tag design="Critical">{t.priceDiffLastInvoiceBadge}</Tag>
                                         )}
                                         {validation.hasMarginWarning && (
                                           <Tag design="Negative">
-                                            Margem{' '}
+                                            {t.marginBadgePrefix}{' '}
                                             {validation.lowestItemMarginPercent?.toFixed(1) ?? ''}%
                                             &lt; {validation.minMarginThreshold}%
                                           </Tag>
@@ -1028,7 +1043,7 @@ export function App() {
                                 </td>
                                 <td style={{ padding: '10px 10px', whiteSpace: 'nowrap' }}>
                                   <Tag design={d.autoInvoiceEnabled ? 'Positive' : 'Neutral'}>
-                                    {d.autoInvoiceEnabled ? 'Sim' : 'Manual'}
+                                    {d.autoInvoiceEnabled ? t.yes : t.manual}
                                   </Tag>
                                 </td>
                                 <td
@@ -1047,7 +1062,7 @@ export function App() {
                                     icon="inspect"
                                     onClick={() => setDetailsDelivery(d)}
                                   >
-                                    Preços e margens
+                                    {t.pricesAndMarginsBtn}
                                   </Button>
                                 </td>
                               </tr>
@@ -1072,7 +1087,7 @@ export function App() {
                   color: '#1d2d3e',
                 }}
               >
-                Controlo de preços e margens por artigo
+                {t.sectionPriceMarginControl}
               </h2>
 
               <div style={horizonWhiteSectionCardStyle}>
@@ -1088,18 +1103,20 @@ export function App() {
                 >
                   <div>
                     <div style={{ ...fioriSubGroupTitleStyle, marginBottom: '2px' }}>
-                      Regras ativas de validação comercial
+                      {t.activeCommercialRules}
                     </div>
                     <Text style={{ fontSize: '13px', color: '#556b82' }}>
-                      Comparação com último preço faturado:{' '}
+                      {t.compareLastInvoicePrice}:{' '}
                       <strong>
-                        {settings?.checkPriceMatchLastInvoice ?? true ? 'Ativa' : 'Inativa'}
+                        {settings?.checkPriceMatchLastInvoice ?? true
+                          ? t.ruleActive
+                          : t.ruleInactive}
                       </strong>{' '}
-                      • Margem mínima por artigo (média para linhas repetidas):{' '}
+                      • {t.minMarginPerItemDesc}:{' '}
                       <strong>
                         {settings?.checkMinimumMargin ?? true
                           ? `${settings?.minimumMarginPercent ?? 30}%`
-                          : 'Inativa'}
+                          : t.ruleInactive}
                       </strong>
                     </Text>
                   </div>
@@ -1108,7 +1125,7 @@ export function App() {
                     icon="action-settings"
                     onClick={() => setSettingsOpen(true)}
                   >
-                    Configurar regras de validação
+                    {t.configureValidationRulesBtn}
                   </Button>
                 </div>
 
@@ -1126,15 +1143,15 @@ export function App() {
                           fontSize: '12.5px',
                         }}
                       >
-                        <th style={{ padding: '10px' }}>Guia</th>
-                        <th style={{ padding: '10px' }}>Cliente</th>
-                        <th style={{ padding: '10px' }}>Artigo</th>
-                        <th style={{ padding: '10px' }}>Linhas / Qtd.</th>
-                        <th style={{ padding: '10px', textAlign: 'right' }}>Preço médio atual</th>
-                        <th style={{ padding: '10px', textAlign: 'right' }}>Últ. preço faturado</th>
-                        <th style={{ padding: '10px', textAlign: 'right' }}>Custo médio</th>
-                        <th style={{ padding: '10px', textAlign: 'right' }}>Margem média</th>
-                        <th style={{ padding: '10px' }}>Estado</th>
+                        <th style={{ padding: '10px' }}>{t.colDelivery}</th>
+                        <th style={{ padding: '10px' }}>{t.colCustomer}</th>
+                        <th style={{ padding: '10px' }}>{t.colItem}</th>
+                        <th style={{ padding: '10px' }}>{t.colRowsQty}</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>{t.colAvgCurrentPrice}</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>{t.colLastInvoicedPrice}</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>{t.colAvgCost}</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>{t.colAvgMargin}</th>
+                        <th style={{ padding: '10px' }}>{t.colState}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1169,7 +1186,9 @@ export function App() {
                             <td style={{ padding: '10px' }}>
                               <div>{item.totalQuantity} un.</div>
                               {item.rowCount > 1 && (
-                                <Tag design="Information">{item.rowCount} linhas (média)</Tag>
+                                <Tag design="Information">
+                                  {item.rowCount} {t.rowsAvgBadge}
+                                </Tag>
                               )}
                             </td>
                             <td style={{ padding: '10px', textAlign: 'right', fontWeight: 600 }}>
@@ -1196,15 +1215,15 @@ export function App() {
                             <td style={{ padding: '10px' }}>
                               <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                                 {item.priceMatchesLastInvoice && item.marginMeetsMinimum ? (
-                                  <Tag design="Positive">Conforme</Tag>
+                                  <Tag design="Positive">{t.compliantBadge}</Tag>
                                 ) : (
                                   <>
                                     {!item.priceMatchesLastInvoice && (
-                                      <Tag design="Critical">Preço diferente</Tag>
+                                      <Tag design="Critical">{t.priceDifferentBadge}</Tag>
                                     )}
                                     {!item.marginMeetsMinimum && (
                                       <Tag design="Negative">
-                                        Margem &lt; {v.minMarginThreshold}%
+                                        {t.marginBadgePrefix} &lt; {v.minMarginThreshold}%
                                       </Tag>
                                     )}
                                   </>
@@ -1231,7 +1250,7 @@ export function App() {
                   color: '#1d2d3e',
                 }}
               >
-                Histórico de faturação e e-mails enviados
+                {t.sectionHistoryAndEmails}
               </h2>
 
               <div style={horizonWhiteSectionCardStyle}>
@@ -1243,7 +1262,7 @@ export function App() {
                       color: '#556b82',
                     }}
                   >
-                    Ainda não existem faturas convertidas nesta sessão.
+                    {t.noConversionsYet}
                   </div>
                 ) : (
                   <div style={{ overflowX: 'auto' }}>
@@ -1254,26 +1273,26 @@ export function App() {
                         <tr
                           style={{
                             borderBottom: '1px solid #d9d9d9',
-                            background: '#f8fafc',
+                            background: '#f5f6f7',
                             textAlign: 'left',
                             color: '#556b82',
                             fontSize: '12.5px',
                           }}
                         >
-                          <th style={{ padding: '10px' }}>Data / Hora</th>
-                          <th style={{ padding: '10px' }}>Origem</th>
-                          <th style={{ padding: '10px' }}>Fatura (OINV)</th>
-                          <th style={{ padding: '10px' }}>Guias base</th>
-                          <th style={{ padding: '10px' }}>Parceiro de negócios</th>
-                          <th style={{ padding: '10px' }}>Destinatário / Contacto</th>
-                          <th style={{ padding: '10px', textAlign: 'right' }}>Total</th>
-                          <th style={{ padding: '10px' }}>Estado</th>
-                          <th style={{ padding: '10px' }}>Ações</th>
+                          <th style={{ padding: '10px' }}>{t.colDateTime}</th>
+                          <th style={{ padding: '10px' }}>{t.colSource}</th>
+                          <th style={{ padding: '10px' }}>{t.colInvoice}</th>
+                          <th style={{ padding: '10px' }}>{t.colBaseDeliveries}</th>
+                          <th style={{ padding: '10px' }}>{t.colBusinessPartner}</th>
+                          <th style={{ padding: '10px' }}>{t.colRecipientContact}</th>
+                          <th style={{ padding: '10px', textAlign: 'right' }}>{t.colTotal}</th>
+                          <th style={{ padding: '10px' }}>{t.colState}</th>
+                          <th style={{ padding: '10px' }}>{t.colActions}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {conversions.map((c) => {
-                          const badge = statusBadge(c.status);
+                          const badge = statusBadge(c.status, t);
                           const sentEmail = emailByConversionId.get(c.id);
                           const canRetryEmail =
                             c.invoiceDocEntry !== null &&
@@ -1283,7 +1302,7 @@ export function App() {
                           return (
                             <tr key={c.id} style={{ borderBottom: '1px solid #edf0f3' }}>
                               <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
-                                {new Date(c.createdAt).toLocaleString('pt-PT')}
+                                {new Date(c.createdAt).toLocaleString(locale)}
                               </td>
                               <td style={{ padding: '10px' }}>
                                 <Tag
@@ -1291,7 +1310,7 @@ export function App() {
                                     c.triggerSource === 'SCHEDULED' ? 'Information' : 'Neutral'
                                   }
                                 >
-                                  {c.triggerSource === 'SCHEDULED' ? 'Auto' : 'Manual'}
+                                  {c.triggerSource === 'SCHEDULED' ? 'Auto' : t.manual}
                                 </Tag>
                               </td>
                               <td style={{ padding: '10px', fontWeight: 700 }}>
@@ -1353,7 +1372,7 @@ export function App() {
                                       icon="show"
                                       onClick={() => setPreviewEmail(sentEmail)}
                                     >
-                                      Ver e-mail
+                                      {t.viewEmailBtn}
                                     </Button>
                                   )}
                                   {c.invoiceDocEntry !== null && (
@@ -1362,7 +1381,7 @@ export function App() {
                                       icon="email"
                                       onClick={() => void openRetryEmailDialog(c)}
                                     >
-                                      {canRetryEmail ? 'Enviar e-mail' : 'Reenviar'}
+                                      {canRetryEmail ? t.sendEmailBtn : t.resendEmailBtn}
                                     </Button>
                                   )}
                                 </div>
@@ -1380,7 +1399,7 @@ export function App() {
         </main>
       </BusyIndicator>
 
-      {/* SAP B1 Web Client Signature Floating Rounded Footer Bar (matches bottom bar in example.html) */}
+      {/* SAP B1 Web Client Signature Floating Rounded Footer Bar */}
       <footer
         style={{
           position: 'fixed',
@@ -1398,15 +1417,24 @@ export function App() {
           zIndex: 50,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px', color: '#556b82' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontSize: '13px',
+            color: '#556b82',
+          }}
+        >
           <span>
-            Guias selecionadas: <strong style={{ color: '#1d2d3e' }}>{selectedEntries.size}</strong>
+            {t.selectedDeliveriesFooter}:{' '}
+            <strong style={{ color: '#1d2d3e' }}>{selectedEntries.size}</strong>
           </span>
           {selectedEntries.size > 0 && (
             <>
               <span>|</span>
               <span>
-                Total a faturar:{' '}
+                {t.totalToInvoiceFooter}:{' '}
                 <strong style={{ color: '#0064d9' }}>{formatMoney(selectedTotalAmount)}</strong>
               </span>
             </>
@@ -1420,7 +1448,7 @@ export function App() {
             disabled={selectedEntries.size === 0 || busyAction}
             onClick={() => void handleConvert(true)}
           >
-            Faturar e enviar e-mail ({selectedEntries.size}) | ⌄
+            {t.invoiceAndSendEmailBtn} ({selectedEntries.size}) | ⌄
           </Button>
           <Button
             design="Default"
@@ -1428,14 +1456,14 @@ export function App() {
             disabled={selectedEntries.size === 0 || busyAction}
             onClick={() => void handleConvert(false)}
           >
-            Apenas faturar
+            {t.invoiceOnlyBtn}
           </Button>
           <Button
             design="Transparent"
             disabled={selectedEntries.size === 0 || busyAction}
             onClick={() => setSelectedEntries(new Set())}
           >
-            Cancelar
+            {t.cancelBtn}
           </Button>
         </div>
       </footer>
@@ -1445,7 +1473,7 @@ export function App() {
         initialSettings={settings}
         onClose={() => setSettingsOpen(false)}
         onSaved={() => {
-          setBanner({ design: 'Positive', text: 'Definições guardadas com sucesso.' });
+          setBanner({ design: 'Positive', text: t.settingsSavedBanner });
           void refreshAll();
         }}
       />
@@ -1462,7 +1490,7 @@ export function App() {
       {/* Send / Retry Email Dialog */}
       <Dialog
         open={Boolean(retryTarget)}
-        headerText={`Enviar e-mail — Fatura FT ${retryTarget?.invoiceDocNum ?? ''}`}
+        headerText={`${t.sendEmailDialogTitle} ${retryTarget?.invoiceDocNum ?? ''}`}
         onClose={() => setRetryTarget(null)}
         footer={
           <Bar
@@ -1473,10 +1501,10 @@ export function App() {
                   disabled={!retryEmailInput.includes('@') || busyAction}
                   onClick={() => void handleConfirmRetryEmail()}
                 >
-                  Enviar agora
+                  {t.sendNowBtn}
                 </Button>
                 <Button design="Transparent" onClick={() => setRetryTarget(null)}>
-                  Cancelar
+                  {t.cancelBtn}
                 </Button>
               </>
             }
@@ -1493,14 +1521,14 @@ export function App() {
           }}
         >
           <div style={fioriFormGridStyle}>
-            <span style={fioriFormLabelStyle}>Parceiro de negócios:</span>
+            <span style={fioriFormLabelStyle}>{t.colBusinessPartner}:</span>
             <span style={{ fontSize: '13.5px', fontWeight: 600 }}>
               {retryTarget?.cardName} ({retryTarget?.cardCode})
             </span>
 
             {retryCustomerOptions.length > 0 && (
               <>
-                <span style={fioriFormLabelStyle}>Contacto / Dados mestre:</span>
+                <span style={fioriFormLabelStyle}>{t.contactMasterDataLabel}</span>
                 <Select
                   style={{ width: '100%' }}
                   onChange={(e) => {
@@ -1532,7 +1560,7 @@ export function App() {
               </>
             )}
 
-            <span style={fioriFormLabelStyle}>E-mail de destino:*</span>
+            <span style={fioriFormLabelStyle}>{t.destinationEmailLabel}</span>
             <Input
               type="Email"
               value={retryEmailInput}
@@ -1552,10 +1580,10 @@ export function App() {
               }}
             />
 
-            <span style={fioriFormLabelStyle}>Nome do contacto:</span>
+            <span style={fioriFormLabelStyle}>{t.contactNameLabel}</span>
             <Input
               value={retryRecipientName}
-              placeholder="Vazio para usar apenas o nome do cliente"
+              placeholder={t.contactNamePlaceholder}
               style={{ width: '100%' }}
               onInput={(e) => setRetryRecipientName(e.target.value)}
             />

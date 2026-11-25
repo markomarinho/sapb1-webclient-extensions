@@ -18,6 +18,7 @@ import {
   type ConnectionSettingsDto,
   type ConnectionTestResultDto,
 } from '../api';
+import { useI18n } from '../i18n';
 
 interface Props {
   open: boolean;
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSaved }) => {
+  const { t } = useI18n();
   const [backendUrl, setBackendUrl] = useState<string>(getApiBaseUrl());
   const [settings, setSettings] = useState<ConnectionSettingsDto>({
     mode: 'mock',
@@ -90,7 +92,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
   return (
     <Dialog
       open={open}
-      headerText="Configuração & Diagnóstico de Ligação (SAP HANA + Service Layer)"
+      headerText={t.connDialogTitle}
       onClose={onClose}
       footer={
         <div
@@ -107,7 +109,7 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
             disabled={busy}
             onClick={() => void handleSaveAndTest(true)}
           >
-            Guardar &amp; Testar Ligação
+            {t.saveAndTestBtn}
           </Button>
           <div style={{ display: 'flex', gap: '8px' }}>
             <Button
@@ -115,10 +117,10 @@ export const ConnectionSettingsDialog: React.FC<Props> = ({ open, onClose, onSav
               disabled={busy}
               onClick={() => void handleSaveAndTest(false)}
             >
-              Guardar &amp; Aplicar
+              {t.saveAndApplyBtn}
             </Button>
             <Button design="Transparent" onClick={onClose} disabled={busy}>
-              Cancelar
+              {t.cancelBtn}
             </Button>
           </div>
         </div>
