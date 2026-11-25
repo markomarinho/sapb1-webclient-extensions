@@ -1,0 +1,72 @@
+name: Build MTAR
+
+on:
+  push:
+    branches: [main]
+    paths: ['extensions/**', 'scripts/**', 'package-lock.json']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-mtar
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Detect extensions to build
+        id: detect
+        run: |
+          all=$(ls -d extensions/*/ | xargs -n1 basename)
+          before="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "$before" 2>/dev/null \
+             || git diff --name-only "$before" HEAD | grep -qE '^(scripts/|package-lock.json)'; then
+            list="$all"
+          else
+            list=$(git diff --name-only "$before" HEAD | grep '^extensions/' | cut -d/ -f2 | sort -u)
+          fi
+          list=$(echo "$list" | xargs)
+          echo "Extensions: $list"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
+      - name: Bump patch versions
+        if: steps.detect.outputs.list != ''
+        run: node scripts/bump-version.mjs ${{ steps.detect.outputs.list }}
+
+      - name: Install
+        if: steps.detect.outputs.list != ''
+        run: npm ci
+
+      - name: Build MTAR
+        if: steps.detect.outputs.list != ''
+        run: node scripts/ext.mjs build:mtar ${{ steps.detect.outputs.list }}
+
+      - name: Upload MTAR artifacts
+        if: steps.detect.outputs.list != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mtar
+          path: extensions/*/mta_archives/*.mtar
+          if-no-files-found: error
+
+      - name: Commit version bump
+        if: steps.detect.outputs.list != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/*/mta.yaml extensions/*/package.json
+          git commit -m "chore: bump extension versions [skip ci]"
+          git push

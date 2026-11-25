@@ -40,4 +40,4 @@ Open `http://localhost:5174`. In mock mode (`B1_MODE=mock`, `EMAIL_MODE=mock`), 
    ```bash
    npm run build:mtar -w extensions/delivery-to-invoice
    ```
-   Upload `extensions/delivery-to-invoice/mta_archives/Delivery-To-Invoice_1.0.0.mtar` in **SAP Business One Extension Manager** (`https://<b1-server>:40000/ExtensionManager`) and assign it to your company database.
+   Upload `extensions/delivery-to-invoice/mta_archives/Delivery-To-Invoice_<version>.mtar` in **SAP Business One Extension Manager** (`https://<b1-server>:40000/ExtensionManager`) and assign it to your company database.

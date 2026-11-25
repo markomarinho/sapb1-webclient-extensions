@@ -46,4 +46,4 @@ Open `http://localhost:5173` and click **"Carregar Exemplos (MT940 + Norma 43)"*
    ```bash
    npm run build:mtar
    ```
-   Upload `extensions/bank-reconciliation/mta_archives/pt-bank-reconciliation_1.0.1.mtar` in **SAP Business One Extension Manager** (`https://<b1-server>:40000/ExtensionManager`) and assign it to your company database.
+   Upload `extensions/bank-reconciliation/mta_archives/Bank-Reconciliation_<version>.mtar` in **SAP Business One Extension Manager** (`https://<b1-server>:40000/ExtensionManager`) and assign it to your company database.
