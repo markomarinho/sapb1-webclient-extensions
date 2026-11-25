@@ -1087,7 +1087,7 @@ export function App() {
                                   </div>
                                 </td>
                                 <td style={{ padding: '10px 10px', whiteSpace: 'nowrap' }}>
-                                  <Tag design={d.autoInvoiceEnabled ? 'Positive' : 'Neutral'}>
+                                  <Tag design={d.autoInvoiceEnabled ? 'Positive' : 'Neutral'} hideStateIcon={!d.autoInvoiceEnabled}>
                                     {d.autoInvoiceEnabled ? t.yes : t.manual}
                                   </Tag>
                                 </td>
@@ -1354,6 +1354,7 @@ export function App() {
                                   design={
                                     c.triggerSource === 'SCHEDULED' ? 'Information' : 'Neutral'
                                   }
+                                  hideStateIcon={c.triggerSource !== 'SCHEDULED'}
                                 >
                                   {c.triggerSource === 'SCHEDULED' ? 'Auto' : t.manual}
                                 </Tag>
