@@ -54,14 +54,6 @@ jobs:
         if: steps.detect.outputs.list != ''
         run: node scripts/ext.mjs build:mtar ${{ steps.detect.outputs.list }}
 
-      - name: Upload MTAR artifacts
-        if: steps.detect.outputs.list != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: mtar
-          path: extensions/*/mta_archives/*.mtar
-          if-no-files-found: error
-
       - name: Commit version bump
         if: steps.detect.outputs.list != ''
         run: |
@@ -70,3 +62,21 @@ jobs:
           git add extensions/*/mta.yaml extensions/*/package.json
           git commit -m "chore: bump extension versions [skip ci]"
           git push
+
+      # One GitHub Release per extension version, with the .mtar attached as a plain file
+      # (no zip to extract). Tag: <extension>-v<version>, e.g. delivery-to-invoice-v1.0.3
+      - name: Publish .mtar releases
+        if: steps.detect.outputs.list != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for ext in ${{ steps.detect.outputs.list }}; do
+            version=$(sed -n 's/^version:[[:space:]]*"\{0,1\}\([^"[:space:]]*\)"\{0,1\}[[:space:]]*$/\1/p' "extensions/$ext/mta.yaml" | head -n1)
+            file=$(ls extensions/$ext/mta_archives/*.mtar)
+            tag="$ext-v$version"
+            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+            gh release create "$tag" "$file" \
+              --target "$(git rev-parse HEAD)" \
+              --title "$ext $version" \
+              --notes "SAP B1 Web Client extension archive for Extension Manager. Download the .mtar and upload it as-is."
+          done
