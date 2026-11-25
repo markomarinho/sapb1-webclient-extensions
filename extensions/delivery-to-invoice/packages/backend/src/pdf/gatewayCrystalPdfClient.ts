@@ -132,7 +132,11 @@ export class GatewayCrystalPdfClient implements IGatewayCrystalPdfClient {
     const setCookies = res.headers['set-cookie'] ?? [];
     const cookieHeader = setCookies.map((c) => c.split(';')[0]).join('; ');
     if (!cookieHeader) {
-      throw new Error('API Gateway não devolveu cookie de sessão (SESSION) no /login.');
+      // The Gateway answers HTTP 200 with a JSON error body (e.g. {"code":-1,"message":{...}}) on failed logins.
+      const detail = res.bodyBuffer.toString('utf8').trim().slice(0, 300);
+      throw new Error(
+        `API Gateway não devolveu cookie de sessão (SESSION) no /login.${detail ? ` Resposta: ${detail}` : ''}`
+      );
     }
 
     this.cachedCookie = cookieHeader;
@@ -253,7 +257,10 @@ export function decodeGatewayPdfPayload(raw: Buffer): Buffer {
 
   const decoded = Buffer.from(text, 'base64');
   if (decoded.subarray(0, 5).toString('ascii') !== '%PDF-') {
-    throw new Error('Resposta do API Gateway ExportPDFData não contém um PDF válido.');
+    const detail = raw.subarray(0, 300).toString('utf8').replace(/\s+/g, ' ').trim();
+    throw new Error(
+      `Resposta do API Gateway ExportPDFData não contém um PDF válido.${detail ? ` Resposta: ${detail}` : ''}`
+    );
   }
   return decoded;
 }

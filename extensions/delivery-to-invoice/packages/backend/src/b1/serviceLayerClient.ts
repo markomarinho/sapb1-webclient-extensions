@@ -898,7 +898,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
   async testConnection(cookieHeader?: string) {
     const start = Date.now();
     try {
-      await this.requestJson('GET', '/CompanyService_GetCompanyInfo', cookieHeader);
+      await this.requestJson('POST', '/CompanyService_GetCompanyInfo', cookieHeader, {});
       return {
         ok: true,
         latencyMs: Date.now() - start,
