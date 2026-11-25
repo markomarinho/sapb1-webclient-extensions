@@ -1,6 +1,6 @@
 _schema-version: "3.2"
 ID: Delivery-To-Invoice
-version: 1.0.1
+version: 1.0.2
 description: "Automatic Delivery Note to A/R Invoice conversion and customer email dispatch"
 provider: MARKO
 
