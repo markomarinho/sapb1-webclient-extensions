@@ -235,6 +235,7 @@ export class ConversionWorkflowService {
       DocTotal: rec.totalAmount.toFixed(2),
       Currency: rec.currency,
       DeliveryRefs: rec.deliveryDocNums.map((n) => `GR ${n}`).join(', '),
+      NumAtCard: invoice?.numAtCard ?? '',
     };
     const subject = renderEmailTemplate(settings.emailSubjectTemplate, vars);
     const renderedBody = renderEmailTemplate(settings.emailBodyTemplate, vars);
@@ -443,6 +444,7 @@ export class ConversionWorkflowService {
       DocTotal: createdInvoice.docTotal.toFixed(2),
       Currency: createdInvoice.currency,
       DeliveryRefs: deliveryDocNums.map((n) => `GR ${n}`).join(', '),
+      NumAtCard: createdInvoice.numAtCard,
     };
     const subject = renderEmailTemplate(settings.emailSubjectTemplate, vars);
     const renderedBody = renderEmailTemplate(settings.emailBodyTemplate, vars);

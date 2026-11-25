@@ -1,5 +1,9 @@
 import {
   applyDefaultEmlGrpCode,
+  buildInvoicePayload,
+  deliverySelectFields,
+  parseDeliveryExpenses,
+  parseDeliveryHeaderCopy,
   evaluateDeliveryNoteChecks,
   filterEligibleDeliveries,
   getDeliveryEmailOptions,
@@ -259,9 +263,7 @@ async function loadLastInvoicedPrices(
 async function fetchOpenDeliveries(): Promise<OpenDeliveryNote[]> {
   const data = await b1sFetch<{ value?: Raw[] }>(
     `/DeliveryNotes?$filter=${encodeURIComponent("DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'")}` +
-      `&$select=${encodeURIComponent(
-        'DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocCurrency,DocTotal,VatSum,NumAtCard,Comments,DocumentLines'
-      )}&$orderby=${encodeURIComponent('DocDate desc')}&$top=200`
+      `&$select=${encodeURIComponent(deliverySelectFields())}&$orderby=${encodeURIComponent('DocDate desc')}&$top=200`
   );
   const raw = data.value ?? [];
   const cardCodes = Array.from(new Set(raw.map((d) => String(d.CardCode))));
@@ -349,6 +351,8 @@ async function fetchOpenDeliveries(): Promise<OpenDeliveryNote[]> {
       vatSum: Number(d.VatSum ?? 0),
       numAtCard: d.NumAtCard ? String(d.NumAtCard) : undefined,
       comments: d.Comments ? String(d.Comments) : undefined,
+      additionalExpenses: parseDeliveryExpenses(d),
+      headerCopy: parseDeliveryHeaderCopy(d),
       lines,
     };
   });
@@ -415,21 +419,13 @@ async function convert(
       // BaseType 15 = Delivery Notes: SAP B1 copies the lines and closes the source deliveries.
       const created = await b1sFetch<Raw>('/Invoices', {
         method: 'POST',
-        body: JSON.stringify({
-          CardCode: group.cardCode,
-          DocDate: invoiceDate,
-          Comments: `Faturado automaticamente a partir da(s) Guia(s): ${group.deliveries
-            .map((d) => d.docNum)
-            .join(', ')}`,
-          DocumentLines: group.deliveries.flatMap((d) =>
-            d.lines.map((l) => ({
-              BaseType: 15,
-              BaseEntry: d.docEntry,
-              BaseLine: l.lineNum,
-              Quantity: l.quantity,
-            }))
-          ),
-        }),
+        body: JSON.stringify(
+          buildInvoicePayload({
+            cardCode: group.cardCode,
+            docDate: invoiceDate,
+            deliveries: group.deliveries,
+          })
+        ),
       });
       invoicesCreated++;
       rec = {

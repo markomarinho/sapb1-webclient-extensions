@@ -442,7 +442,7 @@ export function SettingsDialog({
                   <Label>
                     {t.emailBodyLabel} {'{{InvoiceDocNum}}'}, {'{{InvoiceDate}}'}, {'{{CardName}}'},{' '}
                     {'{{ContactName}}'}, {'{{RecipientName}}'}, {'{{DocTotal}}'}, {'{{Currency}}'},{' '}
-                    {'{{DeliveryRefs}}'})
+                    {'{{DeliveryRefs}}'}, {'{{NumAtCard}}'})
                   </Label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Label>{t.useHtmlCodeSwitch}</Label>
@@ -489,6 +489,7 @@ export function SettingsDialog({
                           DocTotal: '1845.00',
                           Currency: 'EUR',
                           DeliveryRefs: 'GR 20260101',
+                          NumAtCard: 'ENC-8821',
                         }),
                       }}
                     />

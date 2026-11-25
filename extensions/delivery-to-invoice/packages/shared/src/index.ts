@@ -103,6 +103,19 @@ export interface RecipientSelection {
   source?: CustomerEmailSource;
 }
 
+/** A freight / additional-expense row of a delivery note (SL: DocumentAdditionalExpenses). */
+export interface DeliveryExpense {
+  lineNum: number;
+  expenseCode: number;
+  /** Net amount in document currency (LineTotal) or, for foreign-currency rows, LineTotalFC. */
+  amount: number;
+  /** True when `amount` came from LineTotalFC (foreign-currency document). */
+  isForeignCurrency: boolean;
+  remarks?: string;
+  taxCode?: string;
+  distributionRules?: Array<string | null>;
+}
+
 export interface OpenDeliveryNote {
   docEntry: number;
   docNum: number;
@@ -121,6 +134,10 @@ export interface OpenDeliveryNote {
   vatSum: number;
   numAtCard?: string;
   comments?: string;
+  /** Freight and other additional expenses, copied to the invoice. */
+  additionalExpenses?: DeliveryExpense[];
+  /** Header values (salesperson, payment terms, ...) copied to the invoice; see DELIVERY_HEADER_FIELDS. */
+  headerCopy?: Record<string, string | number>;
   lines: DeliveryLine[];
   validation?: DeliveryValidationResult;
   alreadyProcessed?: boolean;
@@ -482,6 +499,165 @@ export function renderEmailTemplate(
   }
 
   return effectiveTemplate.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => enrichedVars[key] ?? '');
+}
+
+/**
+ * Delivery-note header fields that are carried over to the A/R invoice (besides NumAtCard, freight and lines).
+ * Values that mean "none" in SAP (null, '', -1, 0 for the discount) are not copied.
+ */
+export const DELIVERY_HEADER_FIELDS = [
+  'SalesPersonCode',
+  'PaymentGroupCode',
+  'DiscountPercent',
+  'TransportationCode',
+  'ShipToCode',
+  'Address2',
+  'ContactPersonCode',
+  'Project',
+] as const;
+
+/** Names to put in the OData $select so the header fields, freight and extra UDFs come back. */
+export function deliverySelectFields(extraUdfs: string[] = []): string {
+  return [
+    'DocEntry', 'DocNum', 'DocDate', 'DocDueDate', 'CardCode', 'CardName', 'DocCurrency', 'DocTotal', 'VatSum',
+    'NumAtCard', 'Comments', 'DocumentLines', 'DocumentAdditionalExpenses',
+    ...DELIVERY_HEADER_FIELDS,
+    ...extraUdfs,
+  ].join(',');
+}
+
+export function parseUdfList(raw: string | undefined): string[] {
+  return (raw ?? '')
+    .split(',')
+    .map((n) => n.trim())
+    .filter((n) => /^U_\w+$/.test(n));
+}
+
+type RawRecord = Record<string, unknown>;
+
+function isMeaningful(value: unknown): value is string | number {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'number') return Number.isFinite(value) && value !== -1;
+  if (typeof value === 'string') return value.trim() !== '' && value.trim() !== '-1';
+  return false;
+}
+
+/** Extracts the header values to copy from a raw Service Layer delivery note. */
+export function parseDeliveryHeaderCopy(raw: RawRecord, extraUdfs: string[] = []): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const field of [...DELIVERY_HEADER_FIELDS, ...extraUdfs]) {
+    const value = raw[field];
+    if (!isMeaningful(value)) continue;
+    if (field === 'DiscountPercent' && Number(value) === 0) continue;
+    out[field] = typeof value === 'number' ? value : String(value);
+  }
+  return out;
+}
+
+/** Extracts the freight / additional-expense rows from a raw Service Layer delivery note. */
+export function parseDeliveryExpenses(raw: RawRecord): DeliveryExpense[] {
+  const rows = Array.isArray(raw.DocumentAdditionalExpenses)
+    ? (raw.DocumentAdditionalExpenses as RawRecord[])
+    : [];
+  const result: DeliveryExpense[] = [];
+  for (const r of rows) {
+    const local = Number(r.LineTotal ?? 0);
+    const foreign = Number(r.LineTotalFC ?? 0);
+    const isForeignCurrency = !local && Boolean(foreign);
+    const amount = isForeignCurrency ? foreign : local;
+    if (!amount) continue; // empty rows (ExpenseCode only) carry nothing to invoice
+    const rules = [r.DistributionRule, r.DistributionRule2, r.DistributionRule3, r.DistributionRule4, r.DistributionRule5];
+    result.push({
+      lineNum: Number(r.LineNum ?? 0),
+      expenseCode: Number(r.ExpenseCode ?? 0),
+      amount,
+      isForeignCurrency,
+      remarks: r.Remarks ? String(r.Remarks) : undefined,
+      taxCode: r.TaxCode ? String(r.TaxCode) : undefined,
+      distributionRules: rules.some((x) => isMeaningful(x)) ? rules.map((x) => (isMeaningful(x) ? String(x) : null)) : undefined,
+    });
+  }
+  return result;
+}
+
+/** SAP B1 limits NumAtCard to 100 characters. */
+const NUM_AT_CARD_MAX = 100;
+
+/**
+ * NumAtCard of the invoice: the delivery's own reference; when several deliveries are consolidated, the distinct
+ * references joined with ", " (cut to the field limit).
+ */
+export function joinNumAtCard(deliveries: Array<Pick<OpenDeliveryNote, 'numAtCard'>>): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const d of deliveries) {
+    const v = (d.numAtCard ?? '').trim();
+    if (v && !seen.has(v)) {
+      seen.add(v);
+      parts.push(v);
+    }
+  }
+  return parts.join(', ').slice(0, NUM_AT_CARD_MAX);
+}
+
+/**
+ * Builds the Service Layer `POST /Invoices` body that copies delivery notes (BaseType 15) to an A/R invoice:
+ * lines linked to their delivery lines, freight/expenses linked to the delivery expense rows, the customer
+ * reference (NumAtCard) and the header values in DELIVERY_HEADER_FIELDS. For consolidated invoices each header
+ * value is taken from the first delivery that has it.
+ */
+export function buildInvoicePayload(input: {
+  cardCode: string;
+  docDate: string;
+  deliveries: OpenDeliveryNote[];
+  comments?: string;
+  extraUdfs?: string[];
+}): RawRecord {
+  const { deliveries } = input;
+  const payload: RawRecord = {
+    CardCode: input.cardCode,
+    DocDate: input.docDate,
+    Comments:
+      input.comments ??
+      `Faturado automaticamente a partir da(s) Guia(s): ${deliveries.map((d) => d.docNum).join(', ')}`,
+    DocumentLines: deliveries.flatMap((d) =>
+      d.lines.map((l) => ({
+        BaseType: 15,
+        BaseEntry: d.docEntry,
+        BaseLine: l.lineNum,
+        Quantity: l.quantity,
+      }))
+    ),
+  };
+
+  const numAtCard = joinNumAtCard(deliveries);
+  if (numAtCard) payload.NumAtCard = numAtCard;
+
+  for (const field of [...DELIVERY_HEADER_FIELDS, ...(input.extraUdfs ?? [])]) {
+    const source = deliveries.find((d) => d.headerCopy && field in d.headerCopy);
+    if (source?.headerCopy) payload[field] = source.headerCopy[field];
+  }
+
+  const expenses = deliveries.flatMap((d) =>
+    (d.additionalExpenses ?? []).map((e) => {
+      const row: RawRecord = {
+        ExpenseCode: e.expenseCode,
+        [e.isForeignCurrency ? 'LineTotalFC' : 'LineTotal']: e.amount,
+        BaseDocType: 15,
+        BaseDocEntry: d.docEntry,
+        BaseDocLine: e.lineNum,
+      };
+      if (e.remarks) row.Remarks = e.remarks;
+      if (e.taxCode) row.TaxCode = e.taxCode;
+      e.distributionRules?.forEach((rule, i) => {
+        if (rule) row[i === 0 ? 'DistributionRule' : `DistributionRule${i + 1}`] = rule;
+      });
+      return row;
+    })
+  );
+  if (expenses.length > 0) payload.DocumentAdditionalExpenses = expenses;
+
+  return payload;
 }
 
 export function roundMoney(n: number): number {

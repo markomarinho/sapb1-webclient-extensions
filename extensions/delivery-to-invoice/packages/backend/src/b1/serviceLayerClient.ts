@@ -3,7 +3,15 @@ import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
 import type { CustomerEmailOption, DeliveryLine, OpenDeliveryNote } from '@b1-d2i/shared';
-import { roundMoney } from '@b1-d2i/shared';
+import {
+  buildInvoicePayload,
+  deliverySelectFields,
+  joinNumAtCard,
+  parseDeliveryExpenses,
+  parseDeliveryHeaderCopy,
+  parseUdfList,
+  roundMoney,
+} from '@b1-d2i/shared';
 import type { AppConfig } from '../config/env.js';
 
 export interface CreateInvoiceFromDeliveriesInput {
@@ -20,6 +28,8 @@ export interface CreatedInvoiceResult {
   docTotal: number;
   vatSum: number;
   currency: string;
+  /** Customer reference (NumAtCard) stored on the invoice. */
+  numAtCard: string;
   lines: DeliveryLine[];
 }
 
@@ -45,6 +55,7 @@ export interface IB1ServiceLayerClient {
     currency: string;
     docTotal: number;
     vatSum: number;
+    numAtCard: string;
     lines: DeliveryLine[];
   } | null>;
   testConnection(cookieHeader?: string): Promise<{
@@ -375,9 +386,12 @@ export class MockServiceLayerClient implements IB1ServiceLayerClient {
       currency: string;
       docTotal: number;
       vatSum: number;
+      numAtCard: string;
       lines: DeliveryLine[];
     }
   > = new Map();
+  /** Service Layer bodies that would have been POSTed to /Invoices (inspected by tests). */
+  public readonly invoicePayloads: Array<Record<string, unknown>> = [];
   private nextInvoiceDocEntry = 9001;
   private nextInvoiceDocNum = 20265001;
 
@@ -407,6 +421,8 @@ export class MockServiceLayerClient implements IB1ServiceLayerClient {
     const vatSum = roundMoney(input.deliveries.reduce((sum, d) => sum + d.vatSum, 0));
     const docTotal = roundMoney(input.deliveries.reduce((sum, d) => sum + d.docTotal, 0));
     const first = input.deliveries[0];
+    const numAtCard = joinNumAtCard(input.deliveries);
+    this.invoicePayloads.push(buildInvoicePayload(input));
 
     // Close the source delivery notes (mimicking SAP B1 copy-to-invoice behavior)
     for (const d of input.deliveries) {
@@ -423,6 +439,7 @@ export class MockServiceLayerClient implements IB1ServiceLayerClient {
       currency: first.docCurrency,
       docTotal,
       vatSum,
+      numAtCard,
       lines,
     };
     this.invoices.set(docEntry, invoice);
@@ -434,6 +451,7 @@ export class MockServiceLayerClient implements IB1ServiceLayerClient {
       docTotal,
       vatSum,
       currency: first.docCurrency,
+      numAtCard,
       lines,
     };
   }
@@ -711,9 +729,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
 
   async listOpenDeliveries(cookieHeader?: string): Promise<OpenDeliveryNote[]> {
     const filter = encodeURIComponent("DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'");
-    const select = encodeURIComponent(
-      'DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocCurrency,DocTotal,VatSum,NumAtCard,Comments,DocumentLines'
-    );
+    const select = encodeURIComponent(deliverySelectFields(parseUdfList(this.config.B1_COPY_HEADER_UDFS)));
     const data = await this.requestJson<{ value?: Array<Record<string, unknown>> }>(
       'GET',
       `/DeliveryNotes?$filter=${filter}&$select=${select}&$orderby=DocDate desc&$top=200`,
@@ -856,6 +872,8 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
         vatSum: Number(d.VatSum ?? 0),
         numAtCard: d.NumAtCard ? String(d.NumAtCard) : undefined,
         comments: d.Comments ? String(d.Comments) : undefined,
+        additionalExpenses: parseDeliveryExpenses(d),
+        headerCopy: parseDeliveryHeaderCopy(d, parseUdfList(this.config.B1_COPY_HEADER_UDFS)),
         lines,
       };
     });
@@ -865,24 +883,12 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
     input: CreateInvoiceFromDeliveriesInput,
     cookieHeader?: string
   ): Promise<CreatedInvoiceResult> {
-    // Copy every open delivery line via BaseType: 15 (ODLN / DeliveryNotes) so SAP B1 closes the source deliveries
-    const documentLines = input.deliveries.flatMap((delivery) =>
-      delivery.lines.map((line) => ({
-        BaseType: 15,
-        BaseEntry: delivery.docEntry,
-        BaseLine: line.lineNum,
-        Quantity: line.quantity,
-      }))
-    );
-
-    const payload = {
-      CardCode: input.cardCode,
-      DocDate: input.docDate,
-      Comments:
-        input.comments ??
-        `Faturado automaticamente a partir da(s) Guia(s): ${input.deliveries.map((d) => d.docNum).join(', ')}`,
-      DocumentLines: documentLines,
-    };
+    // Copy every open delivery line via BaseType: 15 (ODLN / DeliveryNotes) so SAP B1 closes the source deliveries.
+    // The body also carries NumAtCard, freight/expenses (linked to the delivery rows) and the header values.
+    const payload = buildInvoicePayload({
+      ...input,
+      extraUdfs: parseUdfList(this.config.B1_COPY_HEADER_UDFS),
+    });
 
     const created = await this.requestJson<Record<string, unknown>>(
       'POST',
@@ -898,6 +904,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
       docTotal: Number(created.DocTotal ?? 0),
       vatSum: Number(created.VatSum ?? 0),
       currency: String(created.DocCurrency ?? input.deliveries[0]?.docCurrency ?? 'EUR'),
+      numAtCard: String(created.NumAtCard ?? joinNumAtCard(input.deliveries)),
       lines: input.deliveries.flatMap((d) => d.lines),
     };
   }
@@ -922,6 +929,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
       currency: String(inv.DocCurrency ?? 'EUR'),
       docTotal: Number(inv.DocTotal ?? 0),
       vatSum: Number(inv.VatSum ?? 0),
+      numAtCard: String(inv.NumAtCard ?? ''),
       lines: rawLines.map((l) => ({
         lineNum: Number(l.LineNum ?? 0),
         itemCode: String(l.ItemCode ?? ''),

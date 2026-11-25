@@ -48,6 +48,8 @@ const EnvSchema = z.object({
   B1_REJECT_UNAUTHORIZED_TLS: boolFromEnv.default(true),
   B1_TECH_USER: z.string().default(''),
   B1_TECH_PASSWORD: z.string().default(''),
+  // Comma-separated delivery-note header UDFs (e.g. U_Obs,U_Rota) copied to the invoice besides the standard fields.
+  B1_COPY_HEADER_UDFS: z.string().default(''),
   B1_BP_AUTO_INVOICE_UDF: z.string().default('U_AutoInvoice'),
   B1_BP_INVOICE_EMAIL_UDF: z.string().default(''),
   B1_DEFAULT_EML_GRP_CODE: z.string().default(''),
