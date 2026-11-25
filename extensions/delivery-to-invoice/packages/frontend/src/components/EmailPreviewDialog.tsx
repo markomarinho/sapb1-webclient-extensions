@@ -12,7 +12,6 @@ export function EmailPreviewDialog({ email, onClose }: EmailPreviewDialogProps) 
     <Dialog
       open={Boolean(email)}
       headerText="Pré-visualização do Email Enviado"
-      style={{ width: '640px', maxWidth: '95vw' }}
       onClose={onClose}
       footer={
         <Bar
@@ -25,7 +24,7 @@ export function EmailPreviewDialog({ email, onClose }: EmailPreviewDialogProps) 
       }
     >
       {email && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ width: '620px', maxWidth: '88vw', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           <div>
             <Label>Para: </Label>
             <Text>

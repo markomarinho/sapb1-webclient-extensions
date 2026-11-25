@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   evaluateDeliveryNoteChecks,
   type OpenDeliveryNote,
@@ -7,11 +7,9 @@ import {
   Bar,
   Button,
   Dialog,
-  Label,
   MessageStrip,
+  ObjectStatus,
   Tag,
-  Text,
-  Title,
 } from '@ui5/webcomponents-react';
 import { formatMoney } from '../api';
 
@@ -20,7 +18,11 @@ interface DeliveryDetailsDialogProps {
   onClose: () => void;
 }
 
+type ModalTab = 'ITEMS' | 'LINES' | 'GENERAL';
+
 export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDialogProps) {
+  const [activeTab, setActiveTab] = useState<ModalTab>('ITEMS');
+
   const validation = delivery
     ? (delivery.validation ?? evaluateDeliveryNoteChecks(delivery))
     : null;
@@ -34,10 +36,9 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
       open={Boolean(delivery)}
       headerText={
         delivery
-          ? `Detalhes da Guia de Remessa GR ${delivery.docNum} — Preços e Margens`
-          : 'Detalhes da Guia de Remessa'
+          ? `Guia de remessa GR ${delivery.docNum} — ${delivery.cardName}`
+          : 'Guia de remessa'
       }
-      style={{ width: '940px', maxWidth: '96vw' }}
       onClose={onClose}
       footer={
         <Bar
@@ -50,263 +51,451 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
       }
     >
       {delivery && validation && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0.25rem 0' }}>
-          {/* Validation Status Banner */}
-          {validation.passed ? (
-            <MessageStrip design="Positive" hideCloseButton>
-              Todas as regras de validação cumpridas (preços iguais à última fatura e margem por artigo ≥{' '}
-              {validation.minMarginThreshold}%).
-            </MessageStrip>
-          ) : (
-            <MessageStrip design="Critical" hideCloseButton>
-              <div>
-                <strong>Alertas de Validação Detetados ({validation.warnings.length}):</strong>
-                <ul style={{ margin: '0.35rem 0 0 1.2rem', padding: 0 }}>
-                  {validation.warnings.map((w, idx) => (
-                    <li key={idx}>{w}</li>
-                  ))}
-                </ul>
+        <div
+          style={{
+            width: '920px',
+            maxWidth: '90vw',
+            display: 'flex',
+            flexDirection: 'column',
+            background: '#f5f6f7',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            border: '1px solid #e5e8eb',
+            fontFamily: '"72", "72full", Arial, Helvetica, sans-serif',
+          }}
+        >
+          {/* SAP Fiori ObjectPage Modal Header with Facets */}
+          <div style={{ background: '#ffffff', padding: '16px 28px 18px 28px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '32px', alignItems: 'flex-start' }}>
+              <div style={facetColStyle}>
+                <span style={facetLabelStyle}>Parceiro de negócios</span>
+                <span style={facetValueStyle}>{delivery.cardName}</span>
+                <span style={facetSubStyle}>
+                  {delivery.cardCode} • NIF: {delivery.federalTaxId || '—'}
+                </span>
               </div>
-            </MessageStrip>
-          )}
 
-          {/* Document Header Details */}
+              <div style={facetColStyle}>
+                <span style={facetLabelStyle}>Datas do documento</span>
+                <span style={facetValueStyle}>{delivery.docDate}</span>
+                <span style={facetSubStyle}>Vencimento: {delivery.docDueDate}</span>
+              </div>
+
+              <div style={facetColStyle}>
+                <span style={facetLabelStyle}>Valor líquido / Total</span>
+                <span style={facetValueStyle}>
+                  {formatMoney(delivery.docTotal, delivery.docCurrency)}
+                </span>
+                <span style={facetSubStyle}>
+                  Líq.: {formatMoney(netSubTotal, delivery.docCurrency)} • IVA:{' '}
+                  {formatMoney(delivery.vatSum, delivery.docCurrency)}
+                </span>
+              </div>
+
+              <div style={{ ...facetColStyle, minWidth: '170px' }}>
+                <span style={facetLabelStyle}>Margem mínima do documento</span>
+                <span
+                  style={{
+                    ...facetValueStyle,
+                    color: validation.hasMarginWarning ? '#aa0808' : '#256f3a',
+                  }}
+                >
+                  {validation.lowestItemMarginPercent !== null
+                    ? `${validation.lowestItemMarginPercent.toFixed(1)}%`
+                    : '—'}{' '}
+                  (Mín. exigido: {validation.minMarginThreshold}%)
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      height: '6px',
+                      borderRadius: '4px',
+                      background: '#e2ebd7',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${Math.max(
+                          0,
+                          Math.min(100, validation.lowestItemMarginPercent ?? 0)
+                        )}%`,
+                        height: '100%',
+                        background: validation.passed ? '#256f3a' : '#e76500',
+                        borderRadius: '4px',
+                      }}
+                    />
+                  </div>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '15px',
+                      height: '15px',
+                      borderRadius: '50%',
+                      background: validation.passed ? '#256f3a' : '#e76500',
+                      color: '#ffffff',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {validation.passed ? '✓' : '!'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Fiori Anchor Tab Bar */}
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '0.75rem',
-              padding: '0.75rem 1rem',
-              background: '#f5f6f7',
-              borderRadius: '6px',
-              border: '1px solid #e5e5e5',
+              background: '#ffffff',
+              borderTop: '1px solid #eceef0',
+              borderBottom: '2px solid #0032a5',
+              padding: '0 28px',
+              display: 'flex',
+              gap: '24px',
             }}
           >
-            <div>
-              <Label>Cliente</Label>
-              <div style={{ fontWeight: 600 }}>{delivery.cardName}</div>
-              <Text style={{ fontSize: '0.8rem', color: '#556b82' }}>
-                {delivery.cardCode} • NIF: {delivery.federalTaxId || '—'}
-              </Text>
-            </div>
-            <div>
-              <Label>Documento</Label>
-              <div style={{ fontWeight: 600 }}>
-                GR {delivery.docNum} (DocEntry #{delivery.docEntry})
-              </div>
-              <Text style={{ fontSize: '0.8rem', color: '#556b82' }}>
-                Data: {delivery.docDate} • Venc.: {delivery.docDueDate}
-              </Text>
-            </div>
-            <div>
-              <Label>Referência / Observações</Label>
-              <div style={{ fontWeight: 500 }}>{delivery.numAtCard || '—'}</div>
-              <Text style={{ fontSize: '0.8rem', color: '#556b82' }}>
-                {delivery.comments || 'Sem observações'}
-              </Text>
-            </div>
-            <div>
-              <Label>Totais do Documento</Label>
-              <div style={{ fontWeight: 600 }}>
-                Total: {formatMoney(delivery.docTotal, delivery.docCurrency)}
-              </div>
-              <Text style={{ fontSize: '0.8rem', color: '#556b82' }}>
-                Líquido: {formatMoney(netSubTotal, delivery.docCurrency)} • IVA:{' '}
-                {formatMoney(delivery.vatSum, delivery.docCurrency)}
-              </Text>
-            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('ITEMS')}
+              style={modalTabStyle(activeTab === 'ITEMS')}
+            >
+              Análise de preços e margens por artigo ({validation.itemSummaries.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('LINES')}
+              style={modalTabStyle(activeTab === 'LINES')}
+            >
+              Linhas do documento ({validation.lineResults.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('GENERAL')}
+              style={modalTabStyle(activeTab === 'GENERAL')}
+            >
+              Geral
+            </button>
           </div>
 
-          {/* Item-level Summary Table (with multi-row average / "média") */}
-          <div>
-            <Title level="H5" style={{ marginBottom: '0.4rem' }}>
-              Resumo por Artigo (Comparação Última Fatura & Margem Média — Mínimo:{' '}
-              {validation.minMarginThreshold}%)
-            </Title>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
-                <thead>
-                  <tr
-                    style={{
-                      borderBottom: '2px solid #e5e5e5',
-                      textAlign: 'left',
-                      color: '#556b82',
-                      background: '#fafafa',
-                    }}
-                  >
-                    <th style={{ padding: '0.5rem' }}>Artigo</th>
-                    <th style={{ padding: '0.5rem' }}>Linhas / Qtd.</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'right' }}>Preço Médio Atual</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'right' }}>Últ. Preço Faturado</th>
-                    <th style={{ padding: '0.5rem' }}>Validação Preço</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'right' }}>Custo Médio</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'right' }}>Margem Média (%)</th>
-                    <th style={{ padding: '0.5rem' }}>Validação Margem</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {validation.itemSummaries.map((item) => (
-                    <tr key={item.itemCode} style={{ borderBottom: '1px solid #efefef' }}>
-                      <td style={{ padding: '0.5rem' }}>
-                        <div style={{ fontWeight: 600 }}>{item.itemCode}</div>
-                        <div style={{ fontSize: '0.78rem', color: '#556b82' }}>
-                          {item.itemDescription}
-                        </div>
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        <div>{item.totalQuantity} un.</div>
-                        {item.rowCount > 1 && (
-                          <Tag design="Information">
-                            {item.rowCount} linhas (média)
-                          </Tag>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 600 }}>
-                        {formatMoney(item.avgUnitPrice, delivery.docCurrency)}
-                      </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                        {item.lastInvoicedPrice !== null ? (
-                          <div>
-                            <div style={{ fontWeight: 500 }}>
-                              {formatMoney(item.lastInvoicedPrice, delivery.docCurrency)}
+          {/* Section Canvas */}
+          <div style={{ padding: '18px 28px 24px 28px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {!validation.passed && (
+              <MessageStrip design="Critical" hideCloseButton>
+                <div>
+                  <strong>Alertas de validação comercial ({validation.warnings.length}):</strong>
+                  <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                    {validation.warnings.map((w, idx) => (
+                      <li key={idx}>{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              </MessageStrip>
+            )}
+
+            {activeTab === 'ITEMS' && (
+              <div style={whiteCardStyle}>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#1d2d3e', marginBottom: '12px' }}>
+                  Resumo por artigo (média calculada quando existem múltiplas linhas do mesmo artigo)
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr
+                        style={{
+                          borderBottom: '1px solid #d9d9d9',
+                          background: '#f5f6f7',
+                          textAlign: 'left',
+                          color: '#556b82',
+                          fontSize: '12px',
+                        }}
+                      >
+                        <th style={{ padding: '9px' }}>Artigo</th>
+                        <th style={{ padding: '9px' }}>Linhas / Qtd.</th>
+                        <th style={{ padding: '9px', textAlign: 'right' }}>Preço médio atual</th>
+                        <th style={{ padding: '9px', textAlign: 'right' }}>Últ. preço faturado</th>
+                        <th style={{ padding: '9px' }}>Controlo de preço</th>
+                        <th style={{ padding: '9px', textAlign: 'right' }}>Custo médio</th>
+                        <th style={{ padding: '9px', textAlign: 'right' }}>Margem média (%)</th>
+                        <th style={{ padding: '9px' }}>Controlo de margem</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {validation.itemSummaries.map((item) => (
+                        <tr key={item.itemCode} style={{ borderBottom: '1px solid #edf0f3' }}>
+                          <td style={{ padding: '9px' }}>
+                            <div style={{ fontWeight: 600 }}>{item.itemCode}</div>
+                            <div style={{ fontSize: '11.5px', color: '#556b82' }}>
+                              {item.itemDescription}
                             </div>
-                            {item.lastInvoicedDocNum && (
-                              <div style={{ fontSize: '0.74rem', color: '#556b82' }}>
-                                FT {item.lastInvoicedDocNum}
-                                {item.lastInvoicedDate ? ` (${item.lastInvoicedDate})` : ''}
-                              </div>
+                          </td>
+                          <td style={{ padding: '9px' }}>
+                            <div>{item.totalQuantity} un.</div>
+                            {item.rowCount > 1 && (
+                              <Tag design="Information">{item.rowCount} linhas (média)</Tag>
                             )}
-                          </div>
-                        ) : (
-                          <span style={{ color: '#556b82' }}>Sem histórico</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        {item.lastInvoicedPrice === null ? (
-                          <Tag design="Neutral">Sem Histórico</Tag>
-                        ) : item.priceMatchesLastInvoice ? (
-                          <Tag design="Positive">Igual à Últ. Fatura</Tag>
-                        ) : (
-                          <Tag design="Critical">
-                            Diferente ({item.priceDiff && item.priceDiff > 0 ? '+' : ''}
-                            {formatMoney(item.priceDiff ?? 0, delivery.docCurrency)})
-                          </Tag>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                        {formatMoney(item.avgUnitCost, delivery.docCurrency)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '0.5rem',
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          color: item.marginMeetsMinimum ? '#256f3a' : '#aa0808',
-                        }}
-                      >
-                        {item.avgMarginPercent.toFixed(1)}%
-                      </td>
-                      <td style={{ padding: '0.5rem' }}>
-                        {item.marginMeetsMinimum ? (
-                          <Tag design="Positive">
-                            OK (≥ {validation.minMarginThreshold}%)
-                          </Tag>
-                        ) : (
-                          <Tag design="Negative">
-                            Abaixo de {validation.minMarginThreshold}%
-                          </Tag>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                          </td>
+                          <td style={{ padding: '9px', textAlign: 'right', fontWeight: 700 }}>
+                            {formatMoney(item.avgUnitPrice, delivery.docCurrency)}
+                          </td>
+                          <td style={{ padding: '9px', textAlign: 'right' }}>
+                            {item.lastInvoicedPrice !== null ? (
+                              <div>
+                                <div style={{ fontWeight: 600 }}>
+                                  {formatMoney(item.lastInvoicedPrice, delivery.docCurrency)}
+                                </div>
+                                {item.lastInvoicedDocNum && (
+                                  <div style={{ fontSize: '11px', color: '#556b82' }}>
+                                    FT {item.lastInvoicedDocNum}
+                                    {item.lastInvoicedDate ? ` (${item.lastInvoicedDate})` : ''}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span style={{ color: '#556b82' }}>Sem histórico</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '9px' }}>
+                            {item.lastInvoicedPrice === null ? (
+                              <Tag design="Neutral">Sem histórico</Tag>
+                            ) : item.priceMatchesLastInvoice ? (
+                              <ObjectStatus state="Positive" showDefaultIcon>
+                                Igual à últ. fatura
+                              </ObjectStatus>
+                            ) : (
+                              <ObjectStatus state="Critical" showDefaultIcon>
+                                Diferente ({item.priceDiff && item.priceDiff > 0 ? '+' : ''}
+                                {formatMoney(item.priceDiff ?? 0, delivery.docCurrency)})
+                              </ObjectStatus>
+                            )}
+                          </td>
+                          <td style={{ padding: '9px', textAlign: 'right' }}>
+                            {formatMoney(item.avgUnitCost, delivery.docCurrency)}
+                          </td>
+                          <td
+                            style={{
+                              padding: '9px',
+                              textAlign: 'right',
+                              fontWeight: 700,
+                              color: item.marginMeetsMinimum ? '#256f3a' : '#aa0808',
+                            }}
+                          >
+                            {item.avgMarginPercent.toFixed(1)}%
+                          </td>
+                          <td style={{ padding: '9px' }}>
+                            {item.marginMeetsMinimum ? (
+                              <ObjectStatus state="Positive" showDefaultIcon>
+                                OK (≥ {validation.minMarginThreshold}%)
+                              </ObjectStatus>
+                            ) : (
+                              <ObjectStatus state="Negative" showDefaultIcon>
+                                Abaixo de {validation.minMarginThreshold}%
+                              </ObjectStatus>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
-          {/* Line-by-line Document Details Table */}
-          <div>
-            <Title level="H5" style={{ marginBottom: '0.4rem' }}>
-              Linhas da Guia de Remessa ({validation.lineResults.length})
-            </Title>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                <thead>
-                  <tr
-                    style={{
-                      borderBottom: '2px solid #e5e5e5',
-                      textAlign: 'left',
-                      color: '#556b82',
-                      background: '#fafafa',
-                    }}
-                  >
-                    <th style={{ padding: '0.45rem' }}>#</th>
-                    <th style={{ padding: '0.45rem' }}>Artigo</th>
-                    <th style={{ padding: '0.45rem' }}>Arm.</th>
-                    <th style={{ padding: '0.45rem', textAlign: 'right' }}>Qtd.</th>
-                    <th style={{ padding: '0.45rem', textAlign: 'right' }}>Preço Líq.</th>
-                    <th style={{ padding: '0.45rem', textAlign: 'right' }}>Últ. Fatura</th>
-                    <th style={{ padding: '0.45rem', textAlign: 'right' }}>Custo Unit.</th>
-                    <th style={{ padding: '0.45rem', textAlign: 'right' }}>Margem (€)</th>
-                    <th style={{ padding: '0.45rem', textAlign: 'right' }}>Margem (%)</th>
-                    <th style={{ padding: '0.45rem', textAlign: 'right' }}>Total Linha</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {validation.lineResults.map((line) => (
-                    <tr key={line.lineNum} style={{ borderBottom: '1px solid #efefef' }}>
-                      <td style={{ padding: '0.45rem' }}>{line.lineNum + 1}</td>
-                      <td style={{ padding: '0.45rem' }}>
-                        <span style={{ fontWeight: 600 }}>{line.itemCode}</span> —{' '}
-                        {line.itemDescription}
-                      </td>
-                      <td style={{ padding: '0.45rem' }}>{line.warehouseCode || '—'}</td>
-                      <td style={{ padding: '0.45rem', textAlign: 'right' }}>{line.quantity}</td>
-                      <td
+            {activeTab === 'LINES' && (
+              <div style={whiteCardStyle}>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#1d2d3e', marginBottom: '12px' }}>
+                  Detalhe das linhas da guia de remessa ({validation.lineResults.length})
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr
                         style={{
-                          padding: '0.45rem',
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          color: line.priceMatchesLastInvoice ? 'inherit' : '#b95100',
+                          borderBottom: '1px solid #d9d9d9',
+                          background: '#f5f6f7',
+                          textAlign: 'left',
+                          color: '#556b82',
+                          fontSize: '12px',
                         }}
                       >
-                        {formatMoney(line.netUnitPrice, delivery.docCurrency)}
-                      </td>
-                      <td style={{ padding: '0.45rem', textAlign: 'right' }}>
-                        {line.lastInvoicedPrice !== null
-                          ? formatMoney(line.lastInvoicedPrice, delivery.docCurrency)
-                          : '—'}
-                      </td>
-                      <td style={{ padding: '0.45rem', textAlign: 'right' }}>
-                        {formatMoney(line.unitCost, delivery.docCurrency)}
-                      </td>
-                      <td style={{ padding: '0.45rem', textAlign: 'right' }}>
-                        {formatMoney(line.marginAmount, delivery.docCurrency)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '0.45rem',
-                          textAlign: 'right',
-                          fontWeight: 600,
-                          color:
-                            line.marginPercent >= validation.minMarginThreshold
-                              ? '#256f3a'
-                              : '#aa0808',
-                        }}
-                      >
-                        {line.marginPercent.toFixed(1)}%
-                      </td>
-                      <td style={{ padding: '0.45rem', textAlign: 'right', fontWeight: 600 }}>
-                        {formatMoney(line.lineTotal, delivery.docCurrency)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        <th style={{ padding: '8px' }}>#</th>
+                        <th style={{ padding: '8px' }}>Artigo</th>
+                        <th style={{ padding: '8px' }}>Armazém</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Qtd.</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Preço líq.</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Últ. fatura</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Custo unit.</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Margem (€)</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Margem (%)</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Total linha</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {validation.lineResults.map((line) => (
+                        <tr key={line.lineNum} style={{ borderBottom: '1px solid #edf0f3' }}>
+                          <td style={{ padding: '8px' }}>{line.lineNum + 1}</td>
+                          <td style={{ padding: '8px' }}>
+                            <span style={{ fontWeight: 600 }}>{line.itemCode}</span> —{' '}
+                            {line.itemDescription}
+                          </td>
+                          <td style={{ padding: '8px' }}>{line.warehouseCode || '—'}</td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>{line.quantity}</td>
+                          <td
+                            style={{
+                              padding: '8px',
+                              textAlign: 'right',
+                              fontWeight: 700,
+                              color: line.priceMatchesLastInvoice ? 'inherit' : '#b95100',
+                            }}
+                          >
+                            {formatMoney(line.netUnitPrice, delivery.docCurrency)}
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>
+                            {line.lastInvoicedPrice !== null
+                              ? formatMoney(line.lastInvoicedPrice, delivery.docCurrency)
+                              : '—'}
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>
+                            {formatMoney(line.unitCost, delivery.docCurrency)}
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>
+                            {formatMoney(line.marginAmount, delivery.docCurrency)}
+                          </td>
+                          <td
+                            style={{
+                              padding: '8px',
+                              textAlign: 'right',
+                              fontWeight: 700,
+                              color:
+                                line.marginPercent >= validation.minMarginThreshold
+                                  ? '#256f3a'
+                                  : '#aa0808',
+                            }}
+                          >
+                            {line.marginPercent.toFixed(1)}%
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>
+                            {formatMoney(line.lineTotal, delivery.docCurrency)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'GENERAL' && (
+              <div style={whiteCardStyle}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+                    gap: '24px 40px',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>
+                      Informações básicas
+                    </div>
+                    <div style={kvGridStyle}>
+                      <span style={kvLabelStyle}>Código do cliente:</span>
+                      <span style={kvValStyle}>{delivery.cardCode}</span>
+                      <span style={kvLabelStyle}>Nome do cliente:</span>
+                      <span style={kvValStyle}>{delivery.cardName}</span>
+                      <span style={kvLabelStyle}>NIF:</span>
+                      <span style={kvValStyle}>{delivery.federalTaxId || '—'}</span>
+                      <span style={kvLabelStyle}>Moeda:</span>
+                      <span style={kvValStyle}>{delivery.docCurrency}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '12px' }}>
+                      Informações adicionais
+                    </div>
+                    <div style={kvGridStyle}>
+                      <span style={kvLabelStyle}>Nº documento:</span>
+                      <span style={kvValStyle}>
+                        GR {delivery.docNum} (DocEntry #{delivery.docEntry})
+                      </span>
+                      <span style={kvLabelStyle}>Ref. do cliente:</span>
+                      <span style={kvValStyle}>{delivery.numAtCard || '—'}</span>
+                      <span style={kvLabelStyle}>E-mail principal:</span>
+                      <span style={kvValStyle}>{delivery.customerEmail || '—'}</span>
+                      <span style={kvLabelStyle}>Observações:</span>
+                      <span style={kvValStyle}>{delivery.comments || '—'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
     </Dialog>
   );
 }
+
+const facetColStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '2px',
+};
+
+const facetLabelStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: '#556b82',
+};
+
+const facetValueStyle: React.CSSProperties = {
+  fontSize: '14px',
+  fontWeight: 600,
+  color: '#1d2d3e',
+};
+
+const facetSubStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: '#556b82',
+};
+
+function modalTabStyle(active: boolean): React.CSSProperties {
+  return {
+    background: 'transparent',
+    border: 'none',
+    borderBottom: active ? '3px solid #0064d9' : '3px solid transparent',
+    padding: '10px 2px 9px 2px',
+    fontSize: '13px',
+    fontWeight: 600,
+    color: active ? '#0064d9' : '#1d2d3e',
+    cursor: 'pointer',
+  };
+}
+
+const whiteCardStyle: React.CSSProperties = {
+  background: '#ffffff',
+  borderRadius: '10px',
+  padding: '18px 22px',
+  border: '1px solid #e6ebf0',
+  boxShadow: '0 1px 3px rgba(15, 35, 55, 0.04)',
+};
+
+const kvGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '150px 1fr',
+  rowGap: '8px',
+  columnGap: '12px',
+  fontSize: '13px',
+};
+
+const kvLabelStyle: React.CSSProperties = {
+  color: '#556b82',
+};
+
+const kvValStyle: React.CSSProperties = {
+  color: '#1d2d3e',
+  fontWeight: 500,
+};
