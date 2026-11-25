@@ -1,6 +1,6 @@
 {
   "name": "bank-reconciliation",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Bank Reconciliation (SWIFT MT940 & Norma 43) for the SAP B1 Web Client",
   "scripts": {
