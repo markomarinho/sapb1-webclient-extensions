@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  applyDefaultEmlGrpCode,
   evaluateDeliveryNoteChecks,
   formatEmailList,
   getDeliveryEmailOptions,
@@ -908,7 +909,10 @@ export function App() {
                         </thead>
                         <tbody>
                           {filteredDeliveries.map((d) => {
-                            const emailOptions = getDeliveryEmailOptions(d);
+                            const emailOptions = applyDefaultEmlGrpCode(
+                              getDeliveryEmailOptions(d),
+                              settings?.defaultEmlGrpCode
+                            );
                             const override =
                               recipientOverrides[String(d.docEntry)] ??
                               recipientOverrides[d.cardCode];
@@ -965,30 +969,59 @@ export function App() {
                                     {d.numAtCard ? ` • ${t.refShort}: ${d.numAtCard}` : ''}
                                   </div>
                                 </td>
-                                <td style={{ padding: '10px 10px', minWidth: '295px' }}>
+                                <td style={{ padding: '10px 10px', width: '320px', maxWidth: '320px' }}>
                                   {emailOptions.length > 0 ? (
                                     (() => {
-                                      const activeEmails =
-                                        override !== undefined && override.email === ''
-                                          ? []
-                                          : parseEmailList(resolved.email).map((e) =>
-                                              e.toLowerCase()
+                                      let selectedIds: string[];
+                                      if (override === undefined) {
+                                        const defaultOpt =
+                                          emailOptions.find((o) => o.isDefault) ?? emailOptions[0];
+                                        selectedIds = defaultOpt ? [defaultOpt.id] : [];
+                                      } else if (override.email === '') {
+                                        selectedIds = [];
+                                      } else {
+                                        const activeEmails = parseEmailList(resolved.email).map(
+                                          (e) => e.toLowerCase()
+                                        );
+                                        if (activeEmails.length === 1) {
+                                          const target = activeEmails[0];
+                                          const exact =
+                                            emailOptions.find(
+                                              (opt) =>
+                                                opt.email.toLowerCase() === target &&
+                                                (resolved.contactName
+                                                  ? opt.source === 'CONTACT' &&
+                                                    (opt.contactName ?? '') === resolved.contactName
+                                                  : opt.source !== 'CONTACT')
+                                            ) ??
+                                            emailOptions.find(
+                                              (opt) => opt.email.toLowerCase() === target
                                             );
-                                      const selectedIds = emailOptions
-                                        .filter((opt) =>
-                                          activeEmails.includes(opt.email.toLowerCase())
-                                        )
-                                        .map((opt) => opt.id);
+                                          selectedIds = exact ? [exact.id] : [];
+                                        } else {
+                                          const seen = new Set<string>();
+                                          selectedIds = [];
+                                          for (const opt of emailOptions) {
+                                            const lower = opt.email.toLowerCase();
+                                            if (activeEmails.includes(lower) && !seen.has(lower)) {
+                                              seen.add(lower);
+                                              selectedIds.push(opt.id);
+                                            }
+                                          }
+                                        }
+                                      }
                                       return (
                                         <div
                                           style={{
                                             display: 'flex',
                                             flexDirection: 'column',
                                             gap: '3px',
+                                            width: '300px',
+                                            maxWidth: '300px',
                                           }}
                                         >
                                           <MultiComboBox
-                                            style={{ width: '100%' }}
+                                            style={{ width: '300px', maxWidth: '300px' }}
                                             selectedValues={selectedIds}
                                             onSelectionChange={(e) => {
                                               const ids = e.detail.items
