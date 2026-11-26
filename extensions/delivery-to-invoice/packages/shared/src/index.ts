@@ -32,6 +32,14 @@ export interface DeliveryLine {
   lastInvoicedUomFactor?: number;
   lastInvoicedDocNum?: number | null;
   lastInvoicedDate?: string | null;
+  /** Price source type on the delivery line (e.g. dpsActivePriceList, dpsPriceList, dpsManual). */
+  priceSource?: string | null;
+  /** Price list ID on the delivery line when priced from a price list. */
+  priceList?: number | null;
+  /** Price source type on the last invoice line. */
+  lastInvoicedPriceSource?: string | null;
+  /** Price list ID on the last invoice line. */
+  lastInvoicedPriceList?: number | null;
 }
 
 export interface DeliveryLineCheckResult {
@@ -54,6 +62,7 @@ export interface DeliveryLineCheckResult {
   lastInvoicedDate?: string | null;
   priceDiff: number | null;
   priceMatchesLastInvoice: boolean;
+  samePriceList?: boolean;
 }
 
 export interface DeliveryItemValidationSummary {
@@ -715,9 +724,44 @@ export function roundMoney(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+/** Returns true when the SAP B1 DocumentLines.PriceSource indicates a price list (not manual/special). */
+export function isPriceListPriceSource(source?: string | null): boolean {
+  if (!source) return false;
+  const norm = source.trim().toLowerCase();
+  return norm.includes('pricelist') || norm === 'p' || norm === 't';
+}
+
+/**
+ * Returns true when both the current delivery line and the last invoiced line
+ * are priced from a price list (as PriceSource type) and reference the same PriceList.
+ */
+export function isSamePriceListAsLastInvoice(
+  line: Pick<
+    DeliveryLine,
+    'priceSource' | 'priceList' | 'lastInvoicedPriceSource' | 'lastInvoicedPriceList'
+  >
+): boolean {
+  if (
+    !isPriceListPriceSource(line.priceSource) ||
+    !isPriceListPriceSource(line.lastInvoicedPriceSource)
+  ) {
+    return false;
+  }
+  if (
+    line.priceList === undefined ||
+    line.priceList === null ||
+    line.lastInvoicedPriceList === undefined ||
+    line.lastInvoicedPriceList === null
+  ) {
+    return false;
+  }
+  return line.priceList > 0 && line.priceList === line.lastInvoicedPriceList;
+}
+
 /**
  * Evaluates price and margin rules for a delivery note:
- * 1. Checks if each item's price matches the last price invoiced to this customer.
+ * 1. Checks if each item's price matches the last price invoiced to this customer
+ *    (or both use the same price list as price source type).
  * 2. Checks if each item's margin (averaging multiple rows of the same item) is higher than minimumMarginPercent (default 30%).
  */
 export function evaluateDeliveryNoteChecks(
@@ -747,8 +791,11 @@ export function evaluateDeliveryNoteChecks(
         : null;
     const priceDiff =
       lastInvoicedPrice !== null ? roundMoney(netUnitPrice - lastInvoicedPrice) : null;
+    const samePriceList = isSamePriceListAsLastInvoice(line);
     const priceMatchesLastInvoice =
-      lastInvoicedPrice === null || Math.abs(netUnitPrice - lastInvoicedPrice) <= 0.009;
+      lastInvoicedPrice === null ||
+      samePriceList ||
+      Math.abs(netUnitPrice - lastInvoicedPrice) <= 0.009;
 
     return {
       lineNum: line.lineNum,
@@ -770,6 +817,7 @@ export function evaluateDeliveryNoteChecks(
       lastInvoicedDate: line.lastInvoicedDate ?? null,
       priceDiff,
       priceMatchesLastInvoice,
+      samePriceList,
     };
   });
 
@@ -814,8 +862,12 @@ export function evaluateDeliveryNoteChecks(
       lastInvoicedPrice !== null ? roundMoney(avgUnitPrice - lastInvoicedPrice) : null;
 
     // The weighted average price is what gets compared (rows of the same item are one price group).
+    // If all rows share the same price list (as price source) with the last invoice, assume same price.
+    const allRowsSamePriceList = rows.every((r) => r.samePriceList === true);
     const allRowsMatchPrice =
-      lastInvoicedPrice === null || Math.abs(avgUnitPrice - lastInvoicedPrice) <= 0.009;
+      lastInvoicedPrice === null ||
+      allRowsSamePriceList ||
+      Math.abs(avgUnitPrice - lastInvoicedPrice) <= 0.009;
 
     // Minimum margin check: must be higher than minMarginThreshold (or >= if threshold is met)
     const marginMeetsMinimum = avgMarginPercent >= minMarginThreshold;

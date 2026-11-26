@@ -378,6 +378,8 @@ interface LastInvoiced {
   uomFactor: number;
   docNum: number;
   docDate: string;
+  priceSource?: string | null;
+  priceList?: number | null;
 }
 
 export class MockServiceLayerClient implements IB1ServiceLayerClient {
@@ -790,6 +792,9 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
               uomFactor: Number(il.UnitsOfMeasurment ?? 1) || 1,
               docNum: invDocNum,
               docDate: invDocDate,
+              priceSource: il.PriceSource ? String(il.PriceSource) : null,
+              priceList:
+                il.PriceList !== undefined && il.PriceList !== null ? Number(il.PriceList) : null,
             });
           }
         }
@@ -861,6 +866,11 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
             lastInvoicedPrice: lastInv ? lastInv.price : null,
             lastInvoicedDocNum: lastInv ? lastInv.docNum : null,
             lastInvoicedDate: lastInv ? lastInv.docDate : null,
+            priceSource: l.PriceSource ? String(l.PriceSource) : null,
+            priceList:
+              l.PriceList !== undefined && l.PriceList !== null ? Number(l.PriceList) : null,
+            lastInvoicedPriceSource: lastInv?.priceSource ?? null,
+            lastInvoicedPriceList: lastInv?.priceList ?? null,
           };
         });
 

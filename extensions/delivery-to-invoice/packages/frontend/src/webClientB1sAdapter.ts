@@ -239,6 +239,8 @@ interface LastInvoiced {
   uomFactor: number;
   docNum: number;
   docDate: string;
+  priceSource?: string | null;
+  priceList?: number | null;
 }
 
 async function loadLastInvoicedPrices(
@@ -265,6 +267,9 @@ async function loadLastInvoicedPrices(
           uomFactor: Number(il.UnitsOfMeasurment ?? 1) || 1,
           docNum,
           docDate,
+          priceSource: il.PriceSource ? String(il.PriceSource) : null,
+          priceList:
+            il.PriceList !== undefined && il.PriceList !== null ? Number(il.PriceList) : null,
         });
       }
     }
@@ -348,6 +353,11 @@ async function fetchOpenDeliveries(): Promise<OpenDeliveryNote[]> {
           lastInvoicedPrice: last ? last.price : null,
           lastInvoicedDocNum: last ? last.docNum : null,
           lastInvoicedDate: last ? last.docDate : null,
+          priceSource: l.PriceSource ? String(l.PriceSource) : null,
+          priceList:
+            l.PriceList !== undefined && l.PriceList !== null ? Number(l.PriceList) : null,
+          lastInvoicedPriceSource: last?.priceSource ?? null,
+          lastInvoicedPriceList: last?.priceList ?? null,
         };
       });
 
