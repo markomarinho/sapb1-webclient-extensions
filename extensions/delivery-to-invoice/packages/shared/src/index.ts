@@ -748,11 +748,16 @@ export function evaluateDeliveryNoteChecks(
     const rowCount = rows.length;
     const totalQuantity = roundMoney(rows.reduce((s, r) => s + r.quantity, 0));
     const totalLineAmount = roundMoney(rows.reduce((s, r) => s + r.lineTotal, 0));
-    const avgUnitPrice = roundMoney(rows.reduce((s, r) => s + r.netUnitPrice, 0) / rowCount);
-    const avgUnitCost = roundMoney(rows.reduce((s, r) => s + r.unitCost, 0) / rowCount);
-    const avgMarginPercent = roundMoney(
-      rows.reduce((s, r) => s + r.marginPercent, 0) / rowCount
-    );
+    // Quantity-weighted averages: 2 x 26.57 + 1 x 26.57 with 100% discount -> 53.14 / 3 = 17.71
+    const qtySum = rows.reduce((s, r) => s + r.quantity, 0);
+    const weighted = (pick: (r: DeliveryLineCheckResult) => number): number =>
+      qtySum > 0
+        ? rows.reduce((s, r) => s + pick(r) * r.quantity, 0) / qtySum
+        : rows.reduce((s, r) => s + pick(r), 0) / rowCount;
+    const avgUnitPrice = roundMoney(weighted((r) => r.netUnitPrice));
+    const avgUnitCost = roundMoney(weighted((r) => r.unitCost));
+    const avgMarginPercent =
+      avgUnitCost > 0 ? roundMoney(((avgUnitPrice - avgUnitCost) / avgUnitCost) * 100) : 0;
 
     if (lowestItemMarginPercent === null || avgMarginPercent < lowestItemMarginPercent) {
       lowestItemMarginPercent = avgMarginPercent;
@@ -765,9 +770,9 @@ export function evaluateDeliveryNoteChecks(
     const priceDiff =
       lastInvoicedPrice !== null ? roundMoney(avgUnitPrice - lastInvoicedPrice) : null;
 
+    // The weighted average price is what gets compared (rows of the same item are one price group).
     const allRowsMatchPrice =
-      rows.every((r) => r.priceMatchesLastInvoice) &&
-      (lastInvoicedPrice === null || Math.abs(avgUnitPrice - lastInvoicedPrice) <= 0.009);
+      lastInvoicedPrice === null || Math.abs(avgUnitPrice - lastInvoicedPrice) <= 0.009;
 
     // Minimum margin check: must be higher than minMarginThreshold (or >= if threshold is met)
     const marginMeetsMinimum = avgMarginPercent >= minMarginThreshold;
