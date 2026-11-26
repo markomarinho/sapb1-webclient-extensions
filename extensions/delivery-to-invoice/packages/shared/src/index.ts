@@ -688,7 +688,8 @@ export function evaluateDeliveryNoteChecks(
   const lineResults: DeliveryLineCheckResult[] = delivery.lines.map((line) => {
     const discount = line.discountPercent || 0;
     const netUnitPrice = roundMoney(line.unitPrice * (1 - discount / 100));
-    const unitCost = roundMoney((line.unitCost ?? 0) * (line.uomFactor || 1));
+    // GrossBuyPrice/StockPrice already come per sales UoM, so no UoM factor here.
+    const unitCost = roundMoney(line.unitCost ?? 0);
     const marginAmount = roundMoney((netUnitPrice - unitCost) * line.quantity);
     const marginPercent =
       netUnitPrice > 0 ? roundMoney(((netUnitPrice - unitCost) / netUnitPrice) * 100) : 0;
