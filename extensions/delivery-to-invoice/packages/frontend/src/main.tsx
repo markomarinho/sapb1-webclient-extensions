@@ -6,8 +6,10 @@ import { ThemeProvider } from '@ui5/webcomponents-react';
 import '@ui5/webcomponents-icons/dist/AllIcons.js';
 import { App } from './App';
 import { I18nProvider } from './i18n';
+import { inheritWebClientFonts } from './webClientFonts';
 
 setDefaultFontLoading(false);
+inheritWebClientFonts();
 
 function detectSapWebClientTheme(): string {
   try {
