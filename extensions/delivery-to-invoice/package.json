@@ -1,6 +1,6 @@
 {
   "name": "delivery-to-invoice",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "private": true,
   "description": "Automatic Delivery Note to A/R Invoice conversion and customer email dispatch for SAP B1 Web Client",
   "scripts": {
