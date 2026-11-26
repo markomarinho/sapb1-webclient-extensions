@@ -475,15 +475,15 @@ describe('Delivery-to-Invoice Conversion & Email Workflow', () => {
     assert.equal(listRes.statusCode, 200);
     const { deliveries } = listRes.json();
 
-    // Delivery 501: all prices match last invoice and margins are 35% and 40% (>= 30%)
+    // Delivery 501: all prices match last invoice and markups are 53.85% and 66.67% (>= 30%)
     const d501 = deliveries.find((d: { docEntry: number }) => d.docEntry === 501);
     assert.equal(d501.validation.passed, true);
     assert.equal(d501.validation.hasPriceWarning, false);
     assert.equal(d501.validation.hasMarginWarning, false);
-    assert.equal(d501.validation.lowestItemMarginPercent, 35);
+    assert.equal(d501.validation.lowestItemMarginPercent, 53.85);
 
     // Delivery 502: 2 rows of item A0088 (prices 320 and 280 -> media 300 vs lastInvoicedPrice 340;
-    // margins 28.13% and 17.86% -> media 23.0% < 30%)
+    // markups 28% and 12% -> media 20.0% < 30%)
     const d502 = deliveries.find((d: { docEntry: number }) => d.docEntry === 502);
     assert.equal(d502.validation.passed, false);
     assert.equal(d502.validation.hasPriceWarning, true);
@@ -493,15 +493,15 @@ describe('Delivery-to-Invoice Conversion & Email Workflow', () => {
     assert.equal(d502.validation.itemSummaries[0].rowCount, 2);
     assert.equal(d502.validation.itemSummaries[0].avgUnitPrice, 300);
     assert.equal(d502.validation.itemSummaries[0].lastInvoicedPrice, 340);
-    assert.equal(d502.validation.itemSummaries[0].avgMarginPercent, 22.99);
+    assert.equal(d502.validation.itemSummaries[0].avgMarginPercent, 20);
 
-    // Delivery 503: price 700 != lastInvoicedPrice 750, margin 35% >= 30%
+    // Delivery 503: price 700 != lastInvoicedPrice 750, markup 53.85% >= 30%
     const d503 = deliveries.find((d: { docEntry: number }) => d.docEntry === 503);
     assert.equal(d503.validation.passed, false);
     assert.equal(d503.validation.hasPriceWarning, true);
     assert.equal(d503.validation.hasMarginWarning, false);
 
-    // Delivery 504: price 50 == lastInvoicedPrice 50, margin 25% < 30%
+    // Delivery 504: price 50 == lastInvoicedPrice 50, markup 25% < 30%
     const d504 = deliveries.find((d: { docEntry: number }) => d.docEntry === 504);
     assert.equal(d504.validation.passed, false);
     assert.equal(d504.validation.hasPriceWarning, false);

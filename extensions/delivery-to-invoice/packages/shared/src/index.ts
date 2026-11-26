@@ -692,7 +692,8 @@ export function evaluateDeliveryNoteChecks(
     const unitCost = roundMoney(line.unitCost ?? 0);
     const marginAmount = roundMoney((netUnitPrice - unitCost) * line.quantity);
     const marginPercent =
-      netUnitPrice > 0 ? roundMoney(((netUnitPrice - unitCost) / netUnitPrice) * 100) : 0;
+      // Margin over cost (markup): sells 31.20, costs 23.78 -> 31.2%
+      unitCost > 0 ? roundMoney(((netUnitPrice - unitCost) / unitCost) * 100) : 0;
 
     // Last invoiced price is converted to the UoM of this line (price per inventory unit x line factor).
     const lastInvoicedPrice =
