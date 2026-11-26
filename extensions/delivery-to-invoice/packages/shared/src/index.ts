@@ -23,7 +23,13 @@ export interface DeliveryLine {
   lineTotal: number;
   warehouseCode?: string;
   unitCost?: number;
+  /** Sales UoM code of the line and how many inventory units it contains (1 when no UoM). */
+  uomCode?: string;
+  uomFactor?: number;
   lastInvoicedPrice?: number | null;
+  /** UoM of the last invoice line (price above is per that UoM). */
+  lastInvoicedUomCode?: string;
+  lastInvoicedUomFactor?: number;
   lastInvoicedDocNum?: number | null;
   lastInvoicedDate?: string | null;
 }
@@ -42,6 +48,8 @@ export interface DeliveryLineCheckResult {
   marginAmount: number;
   marginPercent: number;
   lastInvoicedPrice: number | null;
+  uomCode?: string;
+  lastInvoicedUomCode?: string;
   lastInvoicedDocNum?: number | null;
   lastInvoicedDate?: string | null;
   priceDiff: number | null;
@@ -680,14 +688,17 @@ export function evaluateDeliveryNoteChecks(
   const lineResults: DeliveryLineCheckResult[] = delivery.lines.map((line) => {
     const discount = line.discountPercent || 0;
     const netUnitPrice = roundMoney(line.unitPrice * (1 - discount / 100));
-    const unitCost = roundMoney(line.unitCost ?? 0);
+    const unitCost = roundMoney((line.unitCost ?? 0) * (line.uomFactor || 1));
     const marginAmount = roundMoney((netUnitPrice - unitCost) * line.quantity);
     const marginPercent =
       netUnitPrice > 0 ? roundMoney(((netUnitPrice - unitCost) / netUnitPrice) * 100) : 0;
 
+    // Last invoiced price is converted to the UoM of this line (price per inventory unit x line factor).
     const lastInvoicedPrice =
       line.lastInvoicedPrice !== undefined && line.lastInvoicedPrice !== null
-        ? roundMoney(line.lastInvoicedPrice)
+        ? roundMoney(
+            (line.lastInvoicedPrice / (line.lastInvoicedUomFactor || 1)) * (line.uomFactor || 1)
+          )
         : null;
     const priceDiff =
       lastInvoicedPrice !== null ? roundMoney(netUnitPrice - lastInvoicedPrice) : null;
@@ -708,6 +719,8 @@ export function evaluateDeliveryNoteChecks(
       marginAmount,
       marginPercent,
       lastInvoicedPrice,
+      uomCode: line.uomCode,
+      lastInvoicedUomCode: line.lastInvoicedUomCode,
       lastInvoicedDocNum: line.lastInvoicedDocNum ?? null,
       lastInvoicedDate: line.lastInvoicedDate ?? null,
       priceDiff,

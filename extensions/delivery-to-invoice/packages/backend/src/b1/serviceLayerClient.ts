@@ -372,6 +372,14 @@ function buildSeedMockDeliveries(): OpenDeliveryNote[] {
   ];
 }
 
+interface LastInvoiced {
+  price: number;
+  uomCode?: string;
+  uomFactor: number;
+  docNum: number;
+  docDate: string;
+}
+
 export class MockServiceLayerClient implements IB1ServiceLayerClient {
   private deliveries: Map<number, OpenDeliveryNote>;
   private invoices: Map<
@@ -747,17 +755,14 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
         availableEmails: CustomerEmailOption[];
         nif: string;
         autoInvoice: boolean;
-        lastInvoicedByItem: Map<string, { price: number; docNum: number; docDate: string }>;
+        lastInvoicedByItem: Map<string, LastInvoiced>;
       }
     >();
 
     const autoUdf = this.config.B1_BP_AUTO_INVOICE_UDF;
 
     for (const cardCode of uniqueCardCodes) {
-      const lastInvoicedByItem = new Map<
-        string,
-        { price: number; docNum: number; docDate: string }
-      >();
+      const lastInvoicedByItem = new Map<string, LastInvoiced>();
       try {
         const safeCode = cardCode.replace(/'/g, "''");
         const invFilter = encodeURIComponent(
@@ -778,11 +783,11 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
           for (const il of invLines) {
             const itemCode = String(il.ItemCode ?? '');
             if (!itemCode || lastInvoicedByItem.has(itemCode)) continue;
-            const unitPrice = Number(il.Price ?? 0);
-            const discount = Number(il.DiscountPercent ?? 0);
-            const netPrice = roundMoney(unitPrice * (1 - discount / 100));
+            // Service Layer: `Price` is already after discount, `UnitPrice` is before.
             lastInvoicedByItem.set(itemCode, {
-              price: netPrice,
+              price: roundMoney(Number(il.Price ?? 0)),
+              uomCode: il.UoMCode ? String(il.UoMCode) : undefined,
+              uomFactor: Number(il.UnitsOfMeasurment ?? 1) || 1,
               docNum: invDocNum,
               docDate: invDocDate,
             });
@@ -841,13 +846,18 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
             itemCode,
             itemDescription: String(l.ItemDescription ?? ''),
             quantity: Number(l.RemainingOpenQuantity ?? l.Quantity ?? 0),
-            unitPrice: Number(l.Price ?? 0),
+            // `UnitPrice` is before discount; `Price` is after discount (already net).
+            unitPrice: Number(l.UnitPrice ?? l.Price ?? 0),
             discountPercent: Number(l.DiscountPercent ?? 0),
             taxCode: String(l.TaxCode ?? ''),
             taxRate: Number(l.TaxPercentagePerRow ?? 0),
             lineTotal: Number(l.LineTotal ?? 0),
             warehouseCode: l.WarehouseCode ? String(l.WarehouseCode) : undefined,
             unitCost: Number(l.GrossBuyPrice ?? l.StockPrice ?? 0),
+            uomCode: l.UoMCode ? String(l.UoMCode) : undefined,
+            uomFactor: Number(l.UnitsOfMeasurment ?? 1) || 1,
+            lastInvoicedUomCode: lastInv?.uomCode,
+            lastInvoicedUomFactor: lastInv?.uomFactor,
             lastInvoicedPrice: lastInv ? lastInv.price : null,
             lastInvoicedDocNum: lastInv ? lastInv.docNum : null,
             lastInvoicedDate: lastInv ? lastInv.docDate : null,

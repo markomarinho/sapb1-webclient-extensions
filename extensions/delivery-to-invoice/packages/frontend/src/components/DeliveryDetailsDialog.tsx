@@ -364,7 +364,9 @@ export function DeliveryDetailsDialog({ delivery, onClose }: DeliveryDetailsDial
                           </td>
                           <td style={{ padding: '8px', textAlign: 'right' }}>
                             {line.lastInvoicedPrice !== null
-                              ? formatMoney(line.lastInvoicedPrice, delivery.docCurrency)
+                              ? `${formatMoney(line.lastInvoicedPrice, delivery.docCurrency)}${
+                                  line.uomCode ? ` / ${line.uomCode}` : ''
+                                }`
                               : '—'}
                           </td>
                           <td style={{ padding: '8px', textAlign: 'right' }}>

@@ -233,10 +233,18 @@ function extractBpEmailOptions(bp: Raw): {
   };
 }
 
+interface LastInvoiced {
+  price: number;
+  uomCode?: string;
+  uomFactor: number;
+  docNum: number;
+  docDate: string;
+}
+
 async function loadLastInvoicedPrices(
   cardCode: string
-): Promise<Map<string, { price: number; docNum: number; docDate: string }>> {
-  const map = new Map<string, { price: number; docNum: number; docDate: string }>();
+): Promise<Map<string, LastInvoiced>> {
+  const map = new Map<string, LastInvoiced>();
   try {
     const data = await b1sFetch<{ value?: Raw[] }>(
       `/Invoices?$filter=${encodeURIComponent(`CardCode eq '${cardCode.replace(/'/g, "''")}' and Cancelled eq 'tNO'`)}` +
@@ -250,8 +258,14 @@ async function loadLastInvoicedPrices(
       for (const il of lines) {
         const itemCode = String(il.ItemCode ?? '');
         if (!itemCode || map.has(itemCode)) continue;
-        const net = roundMoney(Number(il.Price ?? 0) * (1 - Number(il.DiscountPercent ?? 0) / 100));
-        map.set(itemCode, { price: net, docNum, docDate });
+        // `Price` is already after discount in the Service Layer.
+        map.set(itemCode, {
+          price: roundMoney(Number(il.Price ?? 0)),
+          uomCode: il.UoMCode ? String(il.UoMCode) : undefined,
+          uomFactor: Number(il.UnitsOfMeasurment ?? 1) || 1,
+          docNum,
+          docDate,
+        });
       }
     }
   } catch {
@@ -320,13 +334,17 @@ async function fetchOpenDeliveries(): Promise<OpenDeliveryNote[]> {
           itemCode,
           itemDescription: String(l.ItemDescription ?? ''),
           quantity: Number(l.RemainingOpenQuantity ?? l.Quantity ?? 0),
-          unitPrice: Number(l.Price ?? 0),
+          unitPrice: Number(l.UnitPrice ?? l.Price ?? 0),
           discountPercent: Number(l.DiscountPercent ?? 0),
           taxCode: String(l.TaxCode ?? ''),
           taxRate: Number(l.TaxPercentagePerRow ?? 0),
           lineTotal: Number(l.LineTotal ?? 0),
           warehouseCode: l.WarehouseCode ? String(l.WarehouseCode) : undefined,
           unitCost: Number(l.GrossBuyPrice ?? l.StockPrice ?? 0),
+          uomCode: l.UoMCode ? String(l.UoMCode) : undefined,
+          uomFactor: Number(l.UnitsOfMeasurment ?? 1) || 1,
+          lastInvoicedUomCode: last?.uomCode,
+          lastInvoicedUomFactor: last?.uomFactor,
           lastInvoicedPrice: last ? last.price : null,
           lastInvoicedDocNum: last ? last.docNum : null,
           lastInvoicedDate: last ? last.docDate : null,
