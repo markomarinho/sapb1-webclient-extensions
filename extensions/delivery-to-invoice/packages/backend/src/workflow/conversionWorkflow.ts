@@ -3,8 +3,10 @@ import {
   applyDefaultEmlGrpCode,
   evaluateDeliveryNoteChecks,
   filterEligibleDeliveries,
+  formatEmailList,
   getDeliveryEmailOptions,
   groupDeliveriesForInvoicing,
+  parseEmailList,
   renderEmailTemplate,
   type ConversionRecord,
   type ConvertDeliveriesResponse,
@@ -204,18 +206,19 @@ export class ConversionWorkflowService {
       throw new Error('Não existe fatura criada para reenviar email.');
     }
 
-    const recipient = (overrideRecipient?.trim() || rec.recipientEmail || '').trim();
-    if (!recipient || !recipient.includes('@')) {
+    const parsedEmails = parseEmailList(overrideRecipient?.trim() || rec.recipientEmail || '');
+    if (parsedEmails.length === 0) {
       throw new Error('Indique um endereço de email de destino válido.');
     }
+    const recipient = formatEmailList(parsedEmails);
 
     let recipientName: string | null = null;
     if (overrideRecipientName !== undefined) {
       recipientName = overrideRecipientName.trim() || null;
-    } else {
+    } else if (parsedEmails.length === 1) {
       const customerOptions = await this.b1Client.getCustomerEmails(rec.cardCode, cookieHeader);
       const matched = customerOptions.find(
-        (o) => o.email.toLowerCase() === recipient.toLowerCase()
+        (o) => o.email.toLowerCase() === parsedEmails[0].toLowerCase()
       );
       if (matched) {
         recipientName = matched.source === 'CONTACT' ? (matched.contactName?.trim() || null) : null;

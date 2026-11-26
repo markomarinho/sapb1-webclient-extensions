@@ -72,7 +72,7 @@ const MOCK_CUSTOMER_EMAILS: Record<string, CustomerEmailOption[]> = {
       id: 'main:faturacao@deltacomercio.pt',
       email: 'faturacao@deltacomercio.pt',
       source: 'MAIN',
-      label: 'Principal (Dados Mestre) — faturacao@deltacomercio.pt',
+      label: 'faturacao@deltacomercio.pt',
       isDefault: true,
     },
     {
@@ -82,7 +82,7 @@ const MOCK_CUSTOMER_EMAILS: Record<string, CustomerEmailOption[]> = {
       contactName: 'Ana Martins',
       position: 'Diretora Financeira',
       emlGrpCode: 'FATURACAO',
-      label: 'Contacto: Ana Martins (Diretora Financeira) [FATURACAO] — financeiro@deltacomercio.pt',
+      label: 'Ana Martins (Diretora Financeira) [FATURACAO] — financeiro@deltacomercio.pt',
     },
     {
       id: 'contact:2:logistica@deltacomercio.pt',
@@ -91,7 +91,7 @@ const MOCK_CUSTOMER_EMAILS: Record<string, CustomerEmailOption[]> = {
       contactName: 'Carlos Ferreira',
       position: 'Responsável de Logística',
       emlGrpCode: 'LOGISTICA',
-      label: 'Contacto: Carlos Ferreira (Responsável de Logística) [LOGISTICA] — logistica@deltacomercio.pt',
+      label: 'Carlos Ferreira (Responsável de Logística) [LOGISTICA] — logistica@deltacomercio.pt',
     },
   ],
   C20015: [
@@ -102,7 +102,7 @@ const MOCK_CUSTOMER_EMAILS: Record<string, CustomerEmailOption[]> = {
       contactName: 'Sofia Almeida',
       position: 'Contas a Pagar',
       emlGrpCode: 'FATURACAO',
-      label: 'Contacto: Sofia Almeida (Contas a Pagar) [FATURACAO] — contas.pagar@techlusitana.pt',
+      label: 'Sofia Almeida (Contas a Pagar) [FATURACAO] — contas.pagar@techlusitana.pt',
       isDefault: true,
     },
     {
@@ -112,7 +112,7 @@ const MOCK_CUSTOMER_EMAILS: Record<string, CustomerEmailOption[]> = {
       contactName: 'Miguel Rodrigues',
       position: 'Diretor de TI',
       emlGrpCode: 'TI',
-      label: 'Contacto: Miguel Rodrigues (Diretor de TI) [TI] — mrodrigues@techlusitana.pt',
+      label: 'Miguel Rodrigues (Diretor de TI) [TI] — mrodrigues@techlusitana.pt',
     },
   ],
   C20022: [
@@ -120,7 +120,7 @@ const MOCK_CUSTOMER_EMAILS: Record<string, CustomerEmailOption[]> = {
       id: 'main:ap@corticeirasul.pt',
       email: 'ap@corticeirasul.pt',
       source: 'MAIN',
-      label: 'Principal (Dados Mestre) — ap@corticeirasul.pt',
+      label: 'ap@corticeirasul.pt',
       isDefault: true,
     },
     {
@@ -130,7 +130,7 @@ const MOCK_CUSTOMER_EMAILS: Record<string, CustomerEmailOption[]> = {
       contactName: 'Rui Tavares',
       position: 'Tesouraria',
       emlGrpCode: 'FATURACAO',
-      label: 'Contacto: Rui Tavares (Tesouraria) [FATURACAO] — rtavares@corticeirasul.pt',
+      label: 'Rui Tavares (Tesouraria) [FATURACAO] — rtavares@corticeirasul.pt',
     },
     {
       id: 'contact:2:ihenriques@corticeirasul.pt',
@@ -139,7 +139,7 @@ const MOCK_CUSTOMER_EMAILS: Record<string, CustomerEmailOption[]> = {
       contactName: 'Inês Henriques',
       position: 'Compras',
       emlGrpCode: 'COMPRAS',
-      label: 'Contacto: Inês Henriques (Compras) [COMPRAS] — ihenriques@corticeirasul.pt',
+      label: 'Inês Henriques (Compras) [COMPRAS] — ihenriques@corticeirasul.pt',
     },
   ],
   C20039: [],
@@ -662,7 +662,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
           id: `main:${mainEmail.toLowerCase()}`,
           email: mainEmail,
           source: 'MAIN',
-          label: `Principal (Dados Mestre) — ${mainEmail}`,
+          label: mainEmail,
           isDefault: availableEmails.length === 0,
         });
       }
@@ -705,7 +705,7 @@ export class LiveServiceLayerClient implements IB1ServiceLayerClient {
         contactName,
         position,
         emlGrpCode,
-        label: `Contacto: ${contactName}${roleSuffix}${groupSuffix} — ${email}`,
+        label: `${contactName}${roleSuffix}${groupSuffix} — ${email}`,
         isDefault: availableEmails.length === 0,
       });
     });

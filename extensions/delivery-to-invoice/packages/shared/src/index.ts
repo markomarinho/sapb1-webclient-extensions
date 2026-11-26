@@ -271,6 +271,43 @@ export interface DeliveryGroup {
 }
 
 /**
+ * Splits a comma/semicolon-separated email string into deduplicated, trimmed email addresses.
+ */
+export function parseEmailList(raw?: string | null): string[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const part of raw.split(/[,;]/)) {
+    const clean = part.trim();
+    if (!clean || !clean.includes('@')) continue;
+    const key = clean.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(clean);
+    }
+  }
+  return result;
+}
+
+/**
+ * Formats one or more email addresses into a comma-separated recipient string.
+ */
+export function formatEmailList(emails: string[]): string {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const email of emails) {
+    const clean = email.trim();
+    if (!clean || !clean.includes('@')) continue;
+    const key = clean.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(clean);
+    }
+  }
+  return result.join(', ');
+}
+
+/**
  * Builds deduplicated list of available customer email options (Main BP email + Contacts).
  */
 export function getDeliveryEmailOptions(delivery: OpenDeliveryNote): CustomerEmailOption[] {
@@ -284,7 +321,7 @@ export function getDeliveryEmailOptions(delivery: OpenDeliveryNote): CustomerEma
       id: `main:${primary.toLowerCase()}`,
       email: primary,
       source: 'MAIN',
-      label: `Principal — ${primary}`,
+      label: primary,
       isDefault: true,
     });
   }
@@ -296,7 +333,7 @@ export function getDeliveryEmailOptions(delivery: OpenDeliveryNote): CustomerEma
       email: contact,
       source: 'CONTACT',
       contactName: contactName || undefined,
-      label: contactName ? `Contacto: ${contactName} — ${contact}` : `Contacto — ${contact}`,
+      label: contactName ? `${contactName} — ${contact}` : contact,
       isDefault: options.length === 0,
     });
   }
@@ -337,19 +374,25 @@ export function resolveRecipientSelection(
 ): { email: string | null; contactName: string | null } {
   const options = applyDefaultEmlGrpCode(getDeliveryEmailOptions(delivery), defaultEmlGrpCode);
 
-  if (override?.email && override.email.trim().includes('@')) {
-    const cleanEmail = override.email.trim();
-    if (override.contactName !== undefined) {
+  const overrideEmails = parseEmailList(override?.email);
+  if (overrideEmails.length > 0) {
+    const cleanEmail = formatEmailList(overrideEmails);
+    if (override?.contactName !== undefined) {
       return {
         email: cleanEmail,
         contactName: override.contactName.trim() || null,
       };
     }
-    const matched = options.find((o) => o.email.toLowerCase() === cleanEmail.toLowerCase());
-    return {
-      email: cleanEmail,
-      contactName: matched?.source === 'CONTACT' ? (matched.contactName?.trim() || null) : null,
-    };
+    if (overrideEmails.length === 1) {
+      const matched = options.find(
+        (o) => o.email.toLowerCase() === overrideEmails[0].toLowerCase()
+      );
+      return {
+        email: cleanEmail,
+        contactName: matched?.source === 'CONTACT' ? (matched.contactName?.trim() || null) : null,
+      };
+    }
+    return { email: cleanEmail, contactName: null };
   }
 
   const defaultOpt = options.find((o) => o.isDefault) ?? options[0];

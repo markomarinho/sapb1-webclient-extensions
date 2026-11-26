@@ -1,9 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 export type SupportedLocale = 'pt' | 'en' | 'es' | 'de';
-export type LocalePreference = 'auto' | SupportedLocale;
-
-const STORAGE_KEY = 'b1_d2i_locale_pref';
 
 export function normalizeLocaleTag(raw?: string | null): SupportedLocale | null {
   if (!raw) return null;
@@ -1020,28 +1017,13 @@ export type D2ITranslationDictionary = (typeof D2I_TRANSLATIONS)[SupportedLocale
 
 interface I18nContextValue {
   locale: SupportedLocale;
-  preference: LocalePreference;
-  detectedLocale: SupportedLocale;
   detectedSource: string;
-  setPreference: (pref: LocalePreference) => void;
   t: D2ITranslationDictionary;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [preference, setPreferenceState] = useState<LocalePreference>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved === 'auto' || saved === 'pt' || saved === 'en' || saved === 'es' || saved === 'de') {
-        return saved;
-      }
-    } catch {
-      // Ignore
-    }
-    return 'auto';
-  });
-
   const [detected, setDetected] = useState<{ locale: SupportedLocale; source: string }>(() =>
     detectSapB1WebClientLocale()
   );
@@ -1058,17 +1040,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.clearInterval(interval);
   }, []);
 
-  const setPreference = (pref: LocalePreference) => {
-    setPreferenceState(pref);
-    try {
-      localStorage.setItem(STORAGE_KEY, pref);
-    } catch {
-      // Ignore
-    }
-  };
-
-  const effectiveLocale: SupportedLocale =
-    preference === 'auto' ? detected.locale : preference;
+  const effectiveLocale: SupportedLocale = detected.locale;
 
   useEffect(() => {
     document.documentElement.lang = effectiveLocale;
@@ -1077,13 +1049,10 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const value = useMemo<I18nContextValue>(
     () => ({
       locale: effectiveLocale,
-      preference,
-      detectedLocale: detected.locale,
       detectedSource: detected.source,
-      setPreference,
       t: D2I_TRANSLATIONS[effectiveLocale],
     }),
-    [effectiveLocale, preference, detected]
+    [effectiveLocale, detected.source]
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
@@ -1094,10 +1063,7 @@ export function useI18n(): I18nContextValue {
   if (!ctx) {
     return {
       locale: 'pt',
-      preference: 'auto',
-      detectedLocale: 'pt',
       detectedSource: 'Default',
-      setPreference: () => {},
       t: D2I_TRANSLATIONS.pt,
     };
   }

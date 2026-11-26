@@ -183,7 +183,7 @@ function extractBpEmailOptions(bp: Raw): {
         id: `main:${mainEmail.toLowerCase()}`,
         email: mainEmail,
         source: 'MAIN',
-        label: `Principal (Dados Mestre) — ${mainEmail}`,
+        label: mainEmail,
         isDefault: availableEmails.length === 0,
       });
     }
@@ -218,7 +218,7 @@ function extractBpEmailOptions(bp: Raw): {
       contactName,
       position,
       emlGrpCode,
-      label: `Contacto: ${contactName}${position ? ` (${position})` : ''}${
+      label: `${contactName}${position ? ` (${position})` : ''}${
         emlGrpCode ? ` [${emlGrpCode}]` : ''
       } — ${email}`,
       isDefault: availableEmails.length === 0,

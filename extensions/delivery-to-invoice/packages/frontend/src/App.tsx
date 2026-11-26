@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   evaluateDeliveryNoteChecks,
+  formatEmailList,
   getDeliveryEmailOptions,
+  parseEmailList,
   resolveRecipientSelection,
   type AutomationSettings,
   type ConversionItemStatus,
@@ -21,6 +23,8 @@ import {
   Dialog,
   Input,
   MessageStrip,
+  MultiComboBox,
+  MultiComboBoxItem,
   ObjectStatus,
   Option,
   Select,
@@ -38,7 +42,7 @@ import { AuditLogDialog } from './components/AuditLogDialog';
 import { DeliveryDetailsDialog } from './components/DeliveryDetailsDialog';
 import { EmailPreviewDialog } from './components/EmailPreviewDialog';
 import { SettingsDialog } from './components/SettingsDialog';
-import { useI18n, type D2ITranslationDictionary, type LocalePreference } from './i18n';
+import { useI18n, type D2ITranslationDictionary } from './i18n';
 
 type ActiveSectionTab = 'DELIVERIES' | 'VALIDATION' | 'HISTORY';
 
@@ -61,7 +65,7 @@ function statusBadge(
 }
 
 export function App() {
-  const { t, locale, preference, detectedLocale, setPreference } = useI18n();
+  const { t, locale } = useI18n();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [settings, setSettings] = useState<AutomationSettings | null>(null);
   const [deliveries, setDeliveries] = useState<OpenDeliveryNote[]>([]);
@@ -202,14 +206,16 @@ export function App() {
     });
   };
 
-  const handleSelectDeliveryRecipient = (
+  const handleSelectDeliveryRecipients = (
     delivery: OpenDeliveryNote,
-    option: CustomerEmailOption
+    selectedOptions: CustomerEmailOption[]
   ) => {
+    const emails = selectedOptions.map((o) => o.email.trim()).filter(Boolean);
+    const single = selectedOptions.length === 1 ? selectedOptions[0] : undefined;
     const selection: RecipientSelection = {
-      email: option.email,
-      contactName: option.source === 'CONTACT' ? (option.contactName ?? '') : '',
-      source: option.source,
+      email: formatEmailList(emails),
+      contactName: single?.source === 'CONTACT' ? (single.contactName ?? '') : '',
+      source: single?.source ?? 'CUSTOM',
     };
     setRecipientOverrides((prev) => {
       const next = { ...prev, [String(delivery.docEntry)]: selection };
@@ -435,31 +441,6 @@ export function App() {
             >
               {t.refresh}
             </Button>
-            <Select
-              style={{ width: '165px' }}
-              onChange={(e) => {
-                const val = e.detail.selectedOption?.getAttribute('data-lang') as
-                  | LocalePreference
-                  | undefined;
-                if (val) setPreference(val);
-              }}
-            >
-              <Option data-lang="auto" selected={preference === 'auto'}>
-                {t.langAutoPrefix}: {detectedLocale.toUpperCase()})
-              </Option>
-              <Option data-lang="pt" selected={preference === 'pt'}>
-                Português (PT)
-              </Option>
-              <Option data-lang="en" selected={preference === 'en'}>
-                English (EN)
-              </Option>
-              <Option data-lang="es" selected={preference === 'es'}>
-                Español (ES)
-              </Option>
-              <Option data-lang="de" selected={preference === 'de'}>
-                Deutsch (DE)
-              </Option>
-            </Select>
           </div>
         </div>
 
@@ -986,55 +967,69 @@ export function App() {
                                 </td>
                                 <td style={{ padding: '10px 10px', minWidth: '295px' }}>
                                   {emailOptions.length > 0 ? (
-                                    <div
-                                      style={{
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '3px',
-                                      }}
-                                    >
-                                      <Select
-                                        style={{ width: '100%' }}
-                                        onChange={(e) => {
-                                          const optId = e.detail.selectedOption?.dataset.id;
-                                          const found = emailOptions.find((o) => o.id === optId);
-                                          if (found) handleSelectDeliveryRecipient(d, found);
-                                        }}
-                                      >
-                                        {emailOptions.map((opt) => {
-                                          const isSelected =
-                                            resolved.email?.toLowerCase() ===
-                                              opt.email.toLowerCase() &&
-                                            (opt.source === 'CONTACT'
-                                              ? (resolved.contactName ?? '') ===
-                                                (opt.contactName ?? '')
-                                              : !resolved.contactName);
-                                          return (
-                                            <Option
-                                              key={opt.id}
-                                              data-id={opt.id}
-                                              selected={isSelected}
-                                            >
-                                              {opt.label}
-                                            </Option>
-                                          );
-                                        })}
-                                      </Select>
-                                      <div style={{ fontSize: '11.5px', color: '#556b82' }}>
-                                        {resolved.contactName ? (
-                                          <span>
-                                            {t.customGreeting}:{' '}
-                                            <strong style={{ color: '#0064d9' }}>
-                                              {resolved.contactName}
-                                            </strong>
-                                          </span>
-                                        ) : (
-                                          <span>
-                                            {t.generalGreeting}: {d.cardName}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
+                                    (() => {
+                                      const activeEmails =
+                                        override !== undefined && override.email === ''
+                                          ? []
+                                          : parseEmailList(resolved.email).map((e) =>
+                                              e.toLowerCase()
+                                            );
+                                      const selectedIds = emailOptions
+                                        .filter((opt) =>
+                                          activeEmails.includes(opt.email.toLowerCase())
+                                        )
+                                        .map((opt) => opt.id);
+                                      return (
+                                        <div
+                                          style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '3px',
+                                          }}
+                                        >
+                                          <MultiComboBox
+                                            style={{ width: '100%' }}
+                                            selectedValues={selectedIds}
+                                            onSelectionChange={(e) => {
+                                              const ids = e.detail.items
+                                                .map(
+                                                  (item) =>
+                                                    item.getAttribute('value') ||
+                                                    item.dataset.id
+                                                )
+                                                .filter(Boolean) as string[];
+                                              const picked = emailOptions.filter((o) =>
+                                                ids.includes(o.id)
+                                              );
+                                              handleSelectDeliveryRecipients(d, picked);
+                                            }}
+                                          >
+                                            {emailOptions.map((opt) => (
+                                              <MultiComboBoxItem
+                                                key={opt.id}
+                                                value={opt.id}
+                                                data-id={opt.id}
+                                                text={opt.label}
+                                              />
+                                            ))}
+                                          </MultiComboBox>
+                                          <div style={{ fontSize: '11.5px', color: '#556b82' }}>
+                                            {resolved.contactName ? (
+                                              <span>
+                                                {t.customGreeting}:{' '}
+                                                <strong style={{ color: '#0064d9' }}>
+                                                  {resolved.contactName}
+                                                </strong>
+                                              </span>
+                                            ) : (
+                                              <span>
+                                                {t.generalGreeting}: {d.cardName}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })()
                                   ) : resolved.email ? (
                                     <span>{resolved.email}</span>
                                   ) : (
@@ -1575,53 +1570,60 @@ export function App() {
             {retryCustomerOptions.length > 0 && (
               <>
                 <span style={fioriFormLabelStyle}>{t.contactMasterDataLabel}</span>
-                <Select
+                <MultiComboBox
                   style={{ width: '100%' }}
-                  onChange={(e) => {
-                    const optId = e.detail.selectedOption?.dataset.id;
-                    const found = retryCustomerOptions.find((o) => o.id === optId);
-                    if (found) {
-                      setRetryEmailInput(found.email);
-                      setRetryRecipientName(
-                        found.source === 'CONTACT' ? (found.contactName ?? '') : ''
-                      );
-                    }
+                  selectedValues={retryCustomerOptions
+                    .filter((opt) =>
+                      parseEmailList(retryEmailInput)
+                        .map((e) => e.toLowerCase())
+                        .includes(opt.email.toLowerCase())
+                    )
+                    .map((opt) => opt.id)}
+                  onSelectionChange={(e) => {
+                    const ids = e.detail.items
+                      .map((item) => item.getAttribute('value') || item.dataset.id)
+                      .filter(Boolean) as string[];
+                    const picked = retryCustomerOptions.filter((o) => ids.includes(o.id));
+                    setRetryEmailInput(formatEmailList(picked.map((o) => o.email)));
+                    const single = picked.length === 1 ? picked[0] : undefined;
+                    setRetryRecipientName(
+                      single?.source === 'CONTACT' ? (single.contactName ?? '') : ''
+                    );
                   }}
                 >
                   {retryCustomerOptions.map((opt) => (
-                    <Option
+                    <MultiComboBoxItem
                       key={opt.id}
+                      value={opt.id}
                       data-id={opt.id}
-                      selected={
-                        retryEmailInput.trim().toLowerCase() === opt.email.toLowerCase() &&
-                        (opt.source === 'CONTACT'
-                          ? retryRecipientName.trim() === (opt.contactName ?? '')
-                          : !retryRecipientName.trim())
-                      }
-                    >
-                      {opt.label}
-                    </Option>
+                      text={opt.label}
+                    />
                   ))}
-                </Select>
+                </MultiComboBox>
               </>
             )}
 
             <span style={fioriFormLabelStyle}>{t.destinationEmailLabel}</span>
             <Input
-              type="Email"
+              type="Text"
               value={retryEmailInput}
-              placeholder="faturacao@cliente.pt"
+              placeholder="faturacao@cliente.pt, financeiro@cliente.pt"
               style={{ width: '100%' }}
               onInput={(e) => {
                 const nextEmail = e.target.value;
                 setRetryEmailInput(nextEmail);
-                const matched = retryCustomerOptions.find(
-                  (o) => o.email.toLowerCase() === nextEmail.trim().toLowerCase()
-                );
-                if (matched) {
-                  setRetryRecipientName(
-                    matched.source === 'CONTACT' ? (matched.contactName ?? '') : ''
+                const parsed = parseEmailList(nextEmail);
+                if (parsed.length === 1) {
+                  const matched = retryCustomerOptions.find(
+                    (o) => o.email.toLowerCase() === parsed[0].toLowerCase()
                   );
+                  if (matched) {
+                    setRetryRecipientName(
+                      matched.source === 'CONTACT' ? (matched.contactName ?? '') : ''
+                    );
+                  }
+                } else {
+                  setRetryRecipientName('');
                 }
               }}
             />

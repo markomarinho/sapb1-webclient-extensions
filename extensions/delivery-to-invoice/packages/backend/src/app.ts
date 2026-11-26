@@ -4,7 +4,7 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { filterEligibleDeliveries, type DashboardSummary } from '@b1-d2i/shared';
+import { filterEligibleDeliveries, parseEmailList, type DashboardSummary } from '@b1-d2i/shared';
 import {
   LiveServiceLayerClient,
   MockServiceLayerClient,
@@ -33,8 +33,13 @@ export interface BuildAppOptions {
   gatewayPdfClient?: IGatewayCrystalPdfClient;
 }
 
+const multiEmailSchema = z.string().refine((val) => {
+  const emails = parseEmailList(val);
+  return emails.length > 0 && emails.every((e) => z.string().email().safeParse(e).success);
+}, 'Invalid email address list');
+
 const RecipientSelectionSchema = z.object({
-  email: z.string().email(),
+  email: multiEmailSchema,
   contactName: z.string().optional(),
   source: z.enum(['MAIN', 'UDF', 'CONTACT', 'CUSTOM']).optional(),
 });
@@ -48,7 +53,7 @@ const ConvertSchema = z.object({
 });
 
 const RetryEmailSchema = z.object({
-  recipientEmail: z.string().email().optional(),
+  recipientEmail: multiEmailSchema.optional(),
   recipientName: z.string().optional(),
 });
 
